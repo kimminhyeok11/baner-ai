@@ -1167,7 +1167,108 @@ function init() {
             event.target.classList.add('hidden');
         }
     }
+    
+    setupGlobalRealtime();
 }
+
+// ------------------------------------------------------------------
+// 10. 글로벌 실시간 (Posts, Messages, StockTags)
+// ------------------------------------------------------------------
+
+function setupGlobalRealtime() {
+    // 1. Posts (모든 게시글 변경 감지)
+    const postChannel = client.channel('public:posts')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, payload => {
+            handleNewPostRealtime(payload.new);
+        })
+        .subscribe();
+    state.realtimeChannels['global_posts'] = postChannel;
+
+    // 2. Messages (나에게 온 쪽지)
+    const msgChannel = client.channel('public:messages')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+            if (state.user && payload.new.receiver_id === state.user.id) {
+                showToast(`💌 새로운 쪽지가 도착했습니다!`, 'info');
+                checkUnreadMessages(); // 배지 업데이트
+                
+                // 만약 쪽지함이 열려있다면 리스트 갱신
+                const msgList = document.getElementById('message-list');
+                if (!msgList.classList.contains('hidden') && !document.getElementById('messageModal').classList.contains('hidden')) {
+                     // 전체 리로드보다는 맨 위에 추가하는게 좋지만, 간단히 리로드
+                     loadMessageList();
+                }
+            }
+        })
+        .subscribe();
+    state.realtimeChannels['global_messages'] = msgChannel;
+
+    // 3. Stock Tags (새로운 종목 추가)
+    const stockChannel = client.channel('public:stock_tags')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'stock_tags' }, payload => {
+            // 태그 목록 갱신
+            state.stockTags.push(payload.new.name);
+            renderStockTabs();
+            renderStockOptions();
+            showToast(`📈 새로운 종목 [${payload.new.name}]이(가) 등록되었습니다!`, 'info');
+        })
+        .subscribe();
+    state.realtimeChannels['global_stocks'] = stockChannel;
+}
+
+async function handleNewPostRealtime(newPost) {
+    // 현재 보고 있는 뷰 타입 확인
+    const currentView = window.getCurrentViewType(); // 'public', 'stock', 'secret'
+    
+    // 새 글이 현재 뷰와 관련 있는지 확인
+    let isRelevant = false;
+    let containerId = '';
+
+    if (newPost.type === 'public' && currentView === 'public') {
+        isRelevant = true;
+        containerId = 'posts-list-public';
+    } else if (newPost.type === 'stock' && currentView === 'stock') {
+        // 종목 탭도 일치해야 함
+        if (newPost.stock_id === state.currentStockName) {
+            isRelevant = true;
+            containerId = 'posts-list-stock';
+        }
+    } else if (newPost.type === 'secret' && currentView === 'secret') {
+        isRelevant = true;
+        containerId = 'posts-list-secret';
+    }
+
+    if (isRelevant) {
+        // 닉네임 등을 가져오기 위해 추가 정보 페치 (JOIN이 안되므로 단건 조회 필요)
+        const { data: fullPost } = await client.from('posts')
+            .select(`*, profiles:user_id (nickname, post_count, comment_count)`)
+            .eq('id', newPost.id)
+            .single();
+            
+        if (fullPost) {
+            const container = document.getElementById(containerId);
+            const newEl = createPostElement(fullPost);
+            newEl.classList.add('animate-pulse'); // 강조 효과
+            
+            // 검색 중이 아닐 때만 맨 위에 추가
+            if (!state.searchQuery) {
+                if (container.firstChild) {
+                    container.insertBefore(newEl, container.firstChild);
+                } else {
+                    container.appendChild(newEl);
+                }
+                setTimeout(() => newEl.classList.remove('animate-pulse'), 2000);
+            }
+        }
+    }
+    
+    // 알림은 뷰와 상관없이 띄울 수도 있지만, 너무 많으면 방해되므로 현재 뷰와 다를 때만 띄우거나 생략
+    // 여기서는 "실시간 응답"을 위해 현재 뷰가 아니더라도 중요 알림(예: 내 종목) 등을 띄울 수 있음.
+    // 일단은 현재 뷰에 추가되었을 때 토스트
+    if (isRelevant) {
+        showToast('새로운 비급이 실시간으로 도착했습니다!', 'success');
+    }
+}
+
 
 // 전역 함수 매핑 (HTML 이벤트 핸들러용)
 window.openModal = (id) => document.getElementById(id).classList.remove('hidden');
