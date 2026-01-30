@@ -195,8 +195,14 @@ async function updateAuthState(session) {
         
         checkUnreadMessages();
         setupRealtimeMessages();
+        
+        // New features init
+        await fetchMyLikes();
+        checkUnreadNotifications();
+        setupRealtimeNotifications();
     } else {
         state.profile = null;
+        state.likedPostIds = new Set();
     }
     updateHeaderUI();
 }
@@ -704,19 +710,31 @@ window.toggleLike = async function() {
     if (!state.user) return showToast('좋아요는 로그인 후 가능합니다.', 'error');
     if (state.postToEdit.type === 'secret') return; 
 
-    const likeKey = `liked_${state.currentPostId}_${state.user.id}`;
-    if (localStorage.getItem(likeKey)) {
-        return showToast('이미 추천한 비급입니다.', 'info');
-    }
-
-    const newLikeCount = (state.postToEdit.like_count || 0) + 1;
-    const { error } = await client.from('posts').update({ like_count: newLikeCount }).eq('id', state.currentPostId);
+    // Optimistic UI update
+    const isLiked = state.likedPostIds.has(state.currentPostId);
+    const newLikeCount = (state.postToEdit.like_count || 0) + (isLiked ? -1 : 1);
     
-    if (!error) {
-        document.getElementById('detail-likes').innerText = newLikeCount;
-        state.postToEdit.like_count = newLikeCount;
-        localStorage.setItem(likeKey, 'true');
-        showToast('비급을 추천했습니다.', 'success');
+    document.getElementById('detail-likes').innerText = newLikeCount;
+    state.postToEdit.like_count = newLikeCount;
+    
+    // Toggle Set
+    if (isLiked) state.likedPostIds.delete(state.currentPostId);
+    else state.likedPostIds.add(state.currentPostId);
+
+    let error;
+    if (isLiked) {
+        // Unlike
+        ({ error } = await client.from('post_likes').delete().eq('post_id', state.currentPostId).eq('user_id', state.user.id));
+    } else {
+        // Like
+        ({ error } = await client.from('post_likes').insert({ post_id: state.currentPostId, user_id: state.user.id }));
+    }
+    
+    if (error) {
+        showToast('처리에 실패했습니다.', 'error');
+        // Revert logic could be added here
+    } else {
+        // showToast(isLiked ? '추천을 취소했습니다.' : '비급을 추천했습니다.', 'success');
     }
 }
 
@@ -1350,5 +1368,142 @@ window.togglePreview = function() {
 };
 
 window.handleYouTubeEmbed = window.openYouTubeModal;
+
+// ------------------------------------------------------------------
+// 8. 추가 기능: 좋아요, 신고, 알림 (Extensions)
+// ------------------------------------------------------------------
+
+async function fetchMyLikes() {
+    if (!state.user) return;
+    const { data } = await client.from('post_likes').select('post_id').eq('user_id', state.user.id);
+    if (data) {
+        state.likedPostIds = new Set(data.map(item => item.post_id));
+    } else {
+        state.likedPostIds = new Set();
+    }
+}
+
+let reportTarget = null; // { type: 'post'|'comment', id: string }
+
+window.openReportModal = function(type, id) {
+    if (!state.user) return showToast('로그인 후 이용 가능합니다.', 'error');
+    reportTarget = { type, id };
+    document.getElementById('report-details').value = '';
+    document.getElementById('report-reason').selectedIndex = 0;
+    openModal('reportModal');
+}
+
+window.submitReport = async function() {
+    if (!reportTarget) return;
+    const reason = document.getElementById('report-reason').value;
+    const details = document.getElementById('report-details').value;
+    
+    const { error } = await client.from('reports').insert({
+        reporter_id: state.user.id,
+        target_type: reportTarget.type,
+        target_id: reportTarget.id,
+        reason: reason + (details ? `: ${details}` : '')
+    });
+
+    if (error) {
+        showToast('신고 접수 중 오류가 발생했습니다.', 'error');
+    } else {
+        showToast('신고가 접수되었습니다. 운영진이 검토하겠습니다.', 'success');
+        closeModal('reportModal');
+    }
+}
+
+window.openNotificationModal = function() {
+    if (!state.user) return showToast('로그인 후 이용 가능합니다.', 'error');
+    openModal('notificationModal');
+    loadNotifications();
+}
+
+async function loadNotifications() {
+    const list = document.getElementById('notification-list');
+    list.innerHTML = '<div class="text-center text-gray-500 mt-4 text-xs">로딩 중...</div>';
+    
+    const { data, error } = await client.from('notifications')
+        .select('*')
+        .eq('user_id', state.user.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+    if (error || !data) {
+        list.innerHTML = '<div class="text-center text-gray-500 mt-4 text-xs">알림을 불러올 수 없습니다.</div>';
+        return;
+    }
+
+    if (data.length === 0) {
+        list.innerHTML = '<div class="text-center text-gray-500 mt-4 text-xs">새로운 알림이 없습니다.</div>';
+        return;
+    }
+
+    list.innerHTML = data.map(noti => `
+        <div class="bg-gray-800/50 p-3 rounded-lg border-l-4 ${noti.is_read ? 'border-gray-600 opacity-60' : 'border-yellow-500'}">
+            <p class="text-xs text-gray-300 mb-1">${noti.content}</p>
+            <div class="flex justify-between items-center">
+                <span class="text-[10px] text-gray-500">${new Date(noti.created_at).toLocaleString()}</span>
+                ${noti.link ? `<button onclick="handleNotificationClick('${noti.link}', '${noti.id}')" class="text-[10px] bg-gray-700 px-2 py-1 rounded hover:bg-gray-600">이동</button>` : ''}
+            </div>
+        </div>
+    `).join('');
+}
+
+window.handleNotificationClick = async function(link, notiId) {
+    await client.from('notifications').update({ is_read: true }).eq('id', notiId);
+    checkUnreadNotifications();
+    closeModal('notificationModal');
+    
+    if (link.startsWith('post:')) {
+        const postId = link.split(':')[1];
+        const { data } = await client.from('posts').select(`*, profiles:user_id (nickname)`).eq('id', postId).single();
+        if (data) openPostDetail(data);
+    }
+}
+
+window.markAllNotificationsRead = async function() {
+    if (!state.user) return;
+    await client.from('notifications').update({ is_read: true }).eq('user_id', state.user.id).eq('is_read', false);
+    loadNotifications();
+    checkUnreadNotifications();
+    showToast('모든 알림을 읽음 처리했습니다.', 'success');
+}
+
+async function checkUnreadNotifications() {
+    if (!state.user) return;
+    const { count } = await client.from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', state.user.id)
+        .eq('is_read', false);
+        
+    const badge = document.getElementById('noti-badge');
+    if (count > 0) {
+        badge.classList.remove('hidden');
+    } else {
+        badge.classList.add('hidden');
+    }
+}
+
+function setupRealtimeNotifications() {
+    if (!state.user) return;
+    
+    const channel = client.channel('public:notifications')
+        .on('postgres_changes', { 
+            event: 'INSERT', 
+            schema: 'public', 
+            table: 'notifications', 
+            filter: `user_id=eq.${state.user.id}` 
+        }, payload => {
+            showToast('새로운 알림이 도착했습니다!', 'info');
+            checkUnreadNotifications();
+            if (!document.getElementById('notificationModal').classList.contains('hidden')) {
+                loadNotifications();
+            }
+        })
+        .subscribe();
+        
+    state.realtimeChannels['notifications'] = channel;
+}
 
 document.addEventListener('DOMContentLoaded', init);

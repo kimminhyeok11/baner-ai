@@ -27,6 +27,10 @@
                 千金門
             </h1>
             <div class="flex items-center gap-3">
+                <button onclick="openNotificationModal()" class="relative p-2 text-gray-400 hover:text-white transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                    <span id="noti-badge" class="hidden absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-black"></span>
+                </button>
                 <button onclick="openMessageModal()" class="relative p-2 text-gray-400 hover:text-white transition">
                     <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
                     <span id="msg-badge" class="hidden absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-black"></span>
@@ -191,6 +195,7 @@
                     <div class="flex gap-2">
                         <!-- Message Button Injected dynamically if logged in -->
                         <button id="btn-send-msg" class="hidden text-xs bg-gray-800 text-gray-300 px-3 py-1.5 rounded-full hover:bg-gray-700">쪽지보내기</button>
+                        <button onclick="openReportModal('post', state.currentPostId)" class="text-xs text-gray-500 hover:text-red-400 px-2">🚨 신고</button>
                         <button id="edit-post-btn" class="hidden text-xs text-blue-400 font-bold px-2">수정</button>
                         <button id="delete-post-btn" class="hidden text-xs text-red-500 font-bold px-2">삭제</button>
                     </div>
@@ -263,5 +268,79 @@
             </div>
         </div>
     </div>
+    <!-- Forgot Password Modal -->
+    <div id="forgotPasswordModal" class="hidden fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-[#1C1C1E] w-full max-w-sm p-8 rounded-3xl shadow-2xl border border-gray-800">
+            <h3 class="text-xl font-bold text-white mb-4 text-center">비밀번호 찾기</h3>
+            <p class="text-xs text-gray-400 mb-6 text-center">가입한 이메일 주소를 입력하시면 비밀번호 재설정 링크를 보내드립니다.</p>
+            <input id="reset-email" type="email" placeholder="이메일 주소" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-4 text-base focus:border-yellow-500 outline-none">
+            <button onclick="sendPasswordReset()" class="w-full py-3.5 text-sm bg-yellow-600 text-white rounded-xl font-bold hover:bg-yellow-500 transition mb-3">전송하기</button>
+            <button onclick="closeModal('forgotPasswordModal')" class="w-full text-center text-xs text-gray-500 hover:text-white">취소</button>
+        </div>
+    </div>
+
+    <!-- YouTube Embed Modal -->
+    <div id="youtubeEmbedModal" class="hidden fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-[#1C1C1E] w-full max-w-sm p-6 rounded-3xl shadow-2xl border border-gray-800">
+            <h3 class="text-lg font-bold text-white mb-4">YouTube 영상 첨부</h3>
+            <input id="youtube-url-input" type="text" placeholder="YouTube URL 붙여넣기" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-4 text-sm focus:border-red-500 outline-none">
+            <div class="flex gap-2">
+                <button onclick="closeModal('youtubeEmbedModal')" class="flex-1 py-3 text-sm bg-gray-800 text-gray-300 rounded-xl font-bold">취소</button>
+                <button onclick="handleYouTubeEmbedFromModal()" class="flex-1 py-3 text-sm bg-red-600 text-white rounded-xl font-bold">첨부하기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Legal Modal -->
+    <div id="legalModal" class="hidden fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-[#1C1C1E] w-full max-w-lg h-[80vh] flex flex-col rounded-2xl border border-gray-800">
+            <div class="p-4 border-b border-gray-800 flex justify-between items-center">
+                <h3 id="legal-title" class="text-lg font-bold text-white">이용약관</h3>
+                <button onclick="closeModal('legalModal')" class="text-gray-400 hover:text-white">✕</button>
+            </div>
+            <div id="legal-content" class="flex-grow overflow-y-auto p-6 text-sm text-gray-300 leading-relaxed whitespace-pre-wrap"></div>
+        </div>
+    </div>
+
+    <!-- Report Modal -->
+    <div id="reportModal" class="hidden fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-[#1C1C1E] w-full max-w-sm p-6 rounded-3xl shadow-2xl border border-gray-800">
+            <h3 class="text-lg font-bold text-white mb-2">신고하기</h3>
+            <p class="text-xs text-gray-400 mb-4">건전한 강호 문화를 위해 협조 부탁드립니다.</p>
+            
+            <select id="report-reason" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-3 text-sm focus:border-red-500 outline-none">
+                <option value="spam">스팸 / 홍보성 도배</option>
+                <option value="abuse">욕설 / 비하 발언</option>
+                <option value="adult">음란물 / 부적절한 콘텐츠</option>
+                <option value="fraud">사기 / 허위 사실 유포</option>
+                <option value="other">기타</option>
+            </select>
+            
+            <textarea id="report-details" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-4 text-sm focus:border-red-500 outline-none h-24 resize-none" placeholder="상세 내용을 입력해주세요 (선택사항)"></textarea>
+            
+            <div class="flex gap-2">
+                <button onclick="closeModal('reportModal')" class="flex-1 py-3 text-sm bg-gray-800 text-gray-300 rounded-xl font-bold">취소</button>
+                <button onclick="submitReport()" class="flex-1 py-3 text-sm bg-red-600 text-white rounded-xl font-bold">신고 접수</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Modal -->
+    <div id="notificationModal" class="hidden fixed inset-0 bg-black/60 z-[60] flex justify-end">
+        <div class="bg-[#1C1C1E] w-full max-w-xs h-full shadow-2xl border-l border-gray-800 animate-slide-left flex flex-col">
+            <div class="p-4 border-b border-gray-800 flex justify-between items-center bg-[#1C1C1E]">
+                <h3 class="text-lg font-bold text-white">알림</h3>
+                <button onclick="closeModal('notificationModal')" class="text-gray-400 hover:text-white">✕</button>
+            </div>
+            <div id="notification-list" class="flex-grow overflow-y-auto p-2 space-y-2">
+                <!-- Notifications injected here -->
+                <div class="text-center text-gray-500 mt-10 text-sm">알림을 불러오는 중...</div>
+            </div>
+            <div class="p-3 border-t border-gray-800">
+                <button onclick="markAllNotificationsRead()" class="w-full py-2 text-sm bg-gray-800 text-gray-300 rounded-lg hover:bg-gray-700">모두 읽음 처리</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
