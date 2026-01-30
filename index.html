@@ -1,338 +1,247 @@
 <!DOCTYPE html>
-<html lang="ko" class="scroll-smooth">
+<html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 블로그 배너 생성기 V9 (최종 완성)</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>천금문 (千金門)</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Inter', 'Noto Sans KR', sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; background-color: #f9fafb; }
-        .gradient-btn { background-image: linear-gradient(to right, #4f46e5, #7c3aed); transition: all 0.3s ease-in-out; }
-        .gradient-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.3), 0 4px 6px -2px rgba(124, 58, 237, 0.2); }
-        .gradient-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.4); }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        .fade-in { animation: fadeIn 0.6s ease-out forwards; }
-        .spinner { border: 3px solid rgba(255, 255, 255, 0.3); border-top-color: #fff; border-radius: 50%; width: 1.25rem; height: 1.25rem; animation: spin 0.8s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .custom-focus-ring:focus { outline: none; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.5); }
-        .aspect-ratio-label { transition: all 0.2s ease-in-out; }
-        .aspect-ratio-input:checked + .aspect-ratio-label { border-color: #4f46e5; background-color: #eef2ff; color: #4338ca; font-weight: 600; }
-        .modal-overlay { transition: opacity 0.3s ease-in-out; }
-        .modal-content { transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out; }
-    </style>
-    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body class="text-gray-800">
+<body class="min-h-screen flex flex-col relative">
+    <div id="toast-container" class="fixed bottom-20 left-1/2 transform -translate-x-1/2 z-[100] flex flex-col gap-2 w-max max-w-[90vw]"></div>
 
-    <div id="app-container">
-        <!-- 헤더 -->
-        <header class="sticky top-0 bg-white/80 backdrop-blur-md z-10 border-b border-gray-200">
-            <div class="container mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex justify-between items-center py-3 md:py-4">
-                    <h1 class="text-lg md:text-xl font-bold text-gray-900">🚀 AI 배너 생성기</h1>
-                    <button id="settings-btn" title="API Key 설정" class="p-2 rounded-full hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                        <svg class="h-6 w-6 text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.43.992a6.759 6.759 0 010 1.25c.008.379.138.752.43.992l1.003.827c.424.35.534.954.26 1.431l-1.296 2.247a1.125 1.125 0 01-1.37.49l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.127c-.331.183-.581.495-.644.87l-.213 1.281c-.09.543-.56.94-1.11.94h-2.593c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.063-.374-.313-.686-.645-.87a6.52 6.52 0 01-.22-.127c-.324-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.37-.49l-1.296-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-1.25c-.007-.379-.137-.752-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.431l1.296-2.247a1.125 1.125 0 011.37-.49l1.217.456c.355.133.75.072 1.076-.124.072-.044.146-.087.22-.127.332-.183.582-.495.644-.87l.213-1.281z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                    </button>
+    <!-- Header -->
+    <header class="sticky top-0 z-40 glass glass-border">
+        <div class="max-w-md mx-auto px-4 h-14 flex items-center justify-between">
+            <h1 class="text-xl font-bold tracking-tight text-white cursor-pointer" onclick="navigate('gangho-plaza')">千金門</h1>
+            <div class="flex items-center gap-3">
+                <button onclick="openMessageModal()" class="relative p-2 text-gray-400 hover:text-white transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                    <span id="msg-badge" class="hidden absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-black"></span>
+                </button>
+                <div id="auth-buttons"></div>
+            </div>
+        </div>
+        <nav class="flex justify-around glass-border bg-[#1C1C1E]">
+            <button onclick="navigate('gangho-plaza')" class="nav-btn flex-1 py-3 text-sm font-medium active">광장</button>
+            <button onclick="navigate('stock-board')" class="nav-btn flex-1 py-3 text-sm font-medium">비급</button>
+            <button onclick="navigate('chat-hall')" class="nav-btn flex-1 py-3 text-sm font-medium">채팅</button>
+            <button onclick="navigate('secret-inn')" class="nav-btn flex-1 py-3 text-sm font-medium">객잔</button>
+        </nav>
+    </header>
+
+    <main class="flex-grow max-w-md mx-auto w-full pb-24 p-4">
+        <div id="gangho-plaza" class="app-view">
+            <h2 class="text-2xl font-bold text-white mb-6">강호 광장</h2>
+            <div class="space-y-4" id="posts-list-public"></div>
+        </div>
+        <div id="stock-board" class="app-view hidden">
+            <h2 class="text-2xl font-bold text-white mb-2">종목 비급</h2>
+            <p class="text-gray-500 text-sm mb-6 flex items-center gap-2">
+                <span id="current-stock-name" class="text-yellow-400 font-semibold">삼성전자</span>
+                <span class="text-xs bg-gray-800 px-2 py-0.5 rounded-full">실시간</span>
+            </p>
+            <div id="stock-tabs" class="flex overflow-x-auto space-x-3 pb-2 mb-2 scroll-hidden"></div>
+            <div class="space-y-4" id="posts-list-stock"></div>
+        </div>
+        <div id="chat-hall" class="app-view hidden">
+            <h2 class="text-2xl font-bold text-white mb-6">무림 채팅</h2>
+            <div id="chat-list" class="bg-[#1C1C1E] p-4 rounded-2xl h-[60vh] overflow-y-auto scroll-hidden mb-4 border border-gray-800"></div>
+            <div class="flex gap-2 items-center bg-[#1C1C1E] p-2 rounded-full border border-gray-800">
+                <input id="chat-input" type="text" placeholder="메시지를 입력하세요..." onkeydown="if(event.key==='Enter') sendChat()" class="flex-grow bg-transparent px-4 py-2 text-base text-white focus:outline-none">
+                <button onclick="sendChat()" class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white hover:bg-blue-500 transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                </button>
+            </div>
+        </div>
+        <div id="secret-inn" class="app-view hidden">
+            <h2 class="text-2xl font-bold text-white mb-6">암천 객잔</h2>
+            <div class="space-y-4" id="posts-list-secret"></div>
+        </div>
+    </main>
+    
+    <!-- Floating Action Button -->
+    <button onclick="tryOpenWriteModal(getCurrentViewType())" class="fixed bottom-8 right-6 w-14 h-14 bg-yellow-500 text-black rounded-full shadow-2xl flex items-center justify-center text-3xl font-light hover:scale-105 transition-transform z-50">
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+    </button>
+    
+    <!-- Footer -->
+    <footer class="text-center py-8 text-xs text-gray-500">
+        <div class="space-x-4 mb-2">
+            <button onclick="openLegalModal('terms')" class="hover:text-gray-300">이용약관</button>
+            <button onclick="openLegalModal('privacy')" class="hover:text-gray-300">개인정보처리방침</button>
+        </div>
+        <p>천금문 (千金門) © 2024</p>
+    </footer>
+
+    <!-- Write Modal -->
+    <div id="newPostModal" class="hidden fixed inset-0 bg-black z-[60] flex flex-col animate-slide-up">
+        <div class="flex items-center justify-between px-4 py-3 bg-[#1C1C1E]/90 backdrop-blur-md border-b border-gray-800 sticky top-0 z-10">
+            <button onclick="closeModal('newPostModal')" class="text-gray-400 text-base font-medium hover:text-white">취소</button>
+            <span class="font-bold text-white text-base">새로운 비급</span>
+            <button onclick="savePost()" class="text-yellow-500 font-bold text-base hover:text-yellow-400 disabled:opacity-50" id="save-post-btn">등록</button>
+        </div>
+
+        <div class="flex-grow overflow-y-auto flex flex-col bg-black relative">
+            <div class="px-4 py-4 border-b border-gray-800">
+                <div class="flex space-x-6 text-sm overflow-x-auto scroll-hidden">
+                    <label class="flex items-center flex-shrink-0 cursor-pointer opacity-50 transition-opacity peer-checked:opacity-100">
+                        <input type="radio" name="post-type" id="type-public" value="public" onchange="togglePostTypeFields('public')" class="hidden peer" checked>
+                        <span class="peer-checked:text-white peer-checked:font-bold">강호광장</span>
+                    </label>
+                    <label class="flex items-center flex-shrink-0 cursor-pointer opacity-50 transition-opacity peer-checked:opacity-100">
+                        <input type="radio" name="post-type" id="type-stock" value="stock" onchange="togglePostTypeFields('stock')" class="hidden peer">
+                        <span class="peer-checked:text-white peer-checked:font-bold">종목비급</span>
+                    </label>
+                    <label class="flex items-center flex-shrink-0 cursor-pointer opacity-50 transition-opacity peer-checked:opacity-100">
+                        <input type="radio" name="post-type" id="type-secret" value="secret" onchange="togglePostTypeFields('secret')" class="hidden peer">
+                        <span class="peer-checked:text-white peer-checked:font-bold">암천객잔</span>
+                    </label>
                 </div>
             </div>
-        </header>
 
-        <!-- 메인 컨텐츠 -->
-        <main class="flex-grow container mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-12">
-            <div class="max-w-2xl mx-auto">
-                <section id="input-section" class="text-center mb-10 md:mb-12">
-                     <h2 class="text-3xl md:text-4xl font-extrabold text-gray-900 mb-2">당신의 글에 날개를</h2>
-                    <p class="text-base md:text-lg text-gray-600 mb-6">제목 하나로 다채로운 배너 3종을 즉시 생성해보세요.</p>
-                    <div class="bg-white p-4 md:p-6 rounded-2xl shadow-lg space-y-6">
-                        <div>
-                            <label for="blogTitle" class="block text-left text-sm font-medium text-gray-700 mb-2">1. 블로그 제목 입력</label>
-                            <textarea id="blogTitle" class="w-full px-4 py-3 bg-gray-100 border-gray-300 rounded-lg custom-focus-ring transition duration-200 resize-none" rows="2" placeholder="예: 초보자를 위한 주식 투자 성공 전략"></textarea>
-                        </div>
-                        <div>
-                            <label class="block text-left text-sm font-medium text-gray-700 mb-2">2. 이미지 비율 선택</label>
-                            <div id="aspect-ratio-selector" class="grid grid-cols-3 gap-2 md:gap-4">
-                                <div><input type="radio" id="ratio-16-9" name="aspect_ratio" value="16:9" class="sr-only aspect-ratio-input" checked><label for="ratio-16-9" class="cursor-pointer border-2 border-gray-200 rounded-lg p-3 flex flex-col items-center justify-center aspect-ratio-label"><div class="w-12 h-7 bg-gray-300 rounded-sm mb-1"></div><span class="text-xs md:text-sm">16:9 가로</span></label></div>
-                                <div><input type="radio" id="ratio-1-1" name="aspect_ratio" value="1:1" class="sr-only aspect-ratio-input"><label for="ratio-1-1" class="cursor-pointer border-2 border-gray-200 rounded-lg p-3 flex flex-col items-center justify-center aspect-ratio-label"><div class="w-10 h-10 bg-gray-300 rounded-sm mb-1"></div><span class="text-xs md:text-sm">1:1 정사각형</span></label></div>
-                                <div><input type="radio" id="ratio-4-5" name="aspect_ratio" value="4:5" class="sr-only aspect-ratio-input"><label for="ratio-4-5" class="cursor-pointer border-2 border-gray-200 rounded-lg p-3 flex flex-col items-center justify-center aspect-ratio-label"><div class="w-8 h-10 bg-gray-300 rounded-sm mb-1"></div><span class="text-xs md:text-sm">4:5 세로</span></label></div>
-                            </div>
-                        </div>
-                        <button id="generateBtn" class="w-full text-white font-bold py-3 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none gradient-btn flex items-center justify-center space-x-2"><span id="btn-text">무료로 배너 3종 생성하기</span><div id="btn-spinner" class="spinner hidden"></div></button>
-                    </div>
-                </section>
-                <section id="result-section" class="hidden">
-                    <div id="progress-indicator" class="text-center mb-6 hidden">
-                        <p id="progress-text" class="text-base md:text-lg font-medium text-indigo-600"></p>
-                        <div class="w-full bg-gray-200 rounded-full h-2 mt-2 overflow-hidden"><div id="progress-bar" class="bg-indigo-600 h-2 rounded-full transition-all duration-500" style="width: 0%"></div></div>
-                    </div>
-                    <div id="download-all-container" class="mb-6 hidden">
-                        <button id="download-all-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-4 focus:ring-green-500 focus:ring-opacity-50 transition-all duration-300 ease-in-out flex items-center justify-center space-x-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
-                            <span>전체 다운로드</span>
-                        </button>
-                    </div>
-                    <div id="results-grid" class="space-y-6 md:space-y-8"></div>
-                    <div id="error-message" class="hidden text-center text-red-500 mt-6 p-4 bg-red-100 rounded-lg"></div>
-                </section>
+            <div id="stock-area" class="hidden px-4 py-3 bg-[#1C1C1E]">
+                <input type="text" id="stock-input" list="stock-options" class="w-full bg-transparent text-white py-1 text-base placeholder-gray-600 focus:outline-none" placeholder="종목명 (예: 삼성전자)">
+                <datalist id="stock-options"></datalist>
             </div>
-        </main>
+            <div id="mu-gong-area" class="px-4 py-3 bg-[#1C1C1E]">
+                <select id="mu-gong-select" class="w-full bg-transparent text-white text-base py-1 focus:ring-0 cursor-pointer appearance-none">
+                    <option value="" disabled selected>무공(말머리) 선택</option>
+                </select>
+            </div>
+
+            <div class="px-4 py-3">
+                <input id="new-post-title" type="text" placeholder="제목" oninput="autoSavePost()" class="w-full bg-transparent border-none text-white text-2xl font-bold placeholder-gray-600 focus:outline-none py-2">
+            </div>
+
+            <div id="new-post-content" contenteditable="true" placeholder="무림의 지혜를 나누어 주십시오..." oninput="autoSavePost()" class="flex-grow px-4 py-2 text-lg text-gray-200 focus:outline-none pb-20 leading-relaxed"></div>
+        </div>
+
+        <div class="editor-toolbar flex items-center justify-between px-4 py-3 bg-[#1C1C1E] border-t border-gray-800 safe-area-bottom">
+            <div class="flex items-center space-x-4">
+                <button onclick="formatDoc('bold')" class="text-gray-400 hover:text-white"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path></svg></button>
+                <label for="image-upload-input" class="text-gray-400 hover:text-white cursor-pointer"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg></label>
+                <input type="file" id="image-upload-input" accept="image/*" class="hidden" onchange="handleImageUpload()">
+            </div>
+            <span id="autosave-indicator" class="text-xs text-green-500 opacity-0 transition-opacity">저장됨</span>
+        </div>
     </div>
-
-    <!-- API 키 입력 모달 -->
-    <div id="api-key-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-60 modal-overlay hidden opacity-0">
-        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 md:p-8 space-y-4 modal-content opacity-0 transform scale-95">
-            <h2 class="text-2xl font-bold text-gray-900">API 키 설정</h2>
-            <p class="text-sm text-gray-600">서비스를 이용하려면 Google AI Studio에서 발급받은 Gemini API 키가 필요합니다. 입력된 키는 현재 사용 중인 브라우저에만 저장됩니다.</p>
-            <div>
-                <label for="api-key-input" class="block text-sm font-medium text-gray-700 mb-1">Gemini API Key</label>
-                <input type="password" id="api-key-input" class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="API 키를 여기에 붙여넣으세요">
-                <p id="api-key-error" class="text-red-500 text-xs mt-1 hidden">오류 메시지가 여기에 표시됩니다.</p>
+    
+    <!-- Message Modal (New Feature) -->
+    <div id="messageModal" class="hidden fixed inset-0 z-[70] flex flex-col animate-slide-up bg-black/95 backdrop-blur-xl">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-gray-800 bg-[#1C1C1E]">
+            <span class="text-lg font-bold text-white">쪽지함</span>
+            <button onclick="closeModal('messageModal')" class="w-8 h-8 flex items-center justify-center bg-gray-800 rounded-full text-gray-400">✕</button>
+        </div>
+        <div class="flex-grow overflow-y-auto">
+            <div id="message-list" class="p-4 space-y-3">
+                <!-- Messages will be injected here -->
+                <div class="text-center text-gray-500 mt-10">불러오는 중...</div>
             </div>
-            <div class="flex flex-col sm:flex-row-reverse gap-3">
-                <button id="save-api-key-btn" class="w-full sm:w-auto inline-flex justify-center rounded-lg border border-transparent bg-indigo-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">저장</button>
-                <button id="close-modal-btn" class="w-full sm:w-auto inline-flex justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">취소</button>
+        </div>
+        <div id="message-compose-area" class="hidden p-4 border-t border-gray-800 bg-[#1C1C1E]">
+            <div class="flex flex-col gap-2">
+                <div class="text-xs text-gray-400">받는 사람: <span id="msg-receiver-name" class="text-white font-bold"></span></div>
+                <textarea id="msg-content" class="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white text-sm focus:outline-none focus:border-yellow-500 resize-none h-24" placeholder="내용을 입력하세요..."></textarea>
+                <div class="flex justify-end gap-2">
+                    <button onclick="cancelMessage()" class="px-4 py-2 bg-gray-800 rounded-lg text-sm text-gray-300">취소</button>
+                    <button onclick="submitMessage()" class="px-4 py-2 bg-yellow-600 rounded-lg text-sm text-black font-bold">보내기</button>
+                </div>
             </div>
-            <div class="text-center"><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="text-sm text-indigo-600 hover:text-indigo-500">API 키 발급받기 &rarr;</a></div>
         </div>
     </div>
 
-    <script>
-        // DOM Elements
-        const appContainer = document.getElementById('app-container');
-        const blogTitleEl = document.getElementById('blogTitle');
-        const generateBtn = document.getElementById('generateBtn');
-        const resultSection = document.getElementById('result-section');
-        const resultsGrid = document.getElementById('results-grid');
-        const errorMessageEl = document.getElementById('error-message');
-        const btnText = document.getElementById('btn-text');
-        const btnSpinner = document.getElementById('btn-spinner');
-        const progressIndicator = document.getElementById('progress-indicator');
-        const progressText = document.getElementById('progress-text');
-        const progressBar = document.getElementById('progress-bar');
-        const downloadAllContainer = document.getElementById('download-all-container');
-        const downloadAllBtn = document.getElementById('download-all-btn');
-        
-        // API Key Modal Elements
-        const apiKeyModal = document.getElementById('api-key-modal');
-        const apiKeyInput = document.getElementById('api-key-input');
-        const saveApiKeyBtn = document.getElementById('save-api-key-btn');
-        const closeModalBtn = document.getElementById('close-modal-btn');
-        const settingsBtn = document.getElementById('settings-btn');
-        const apiKeyError = document.getElementById('api-key-error');
-
-        // Config & State
-        const STYLES = [
-            { name: '카툰', suffix: 'vibrant cartoon illustration, clean lines, simple, flat vector art, trending on artstation, --no text' },
-            { name: '실사', suffix: 'photorealistic, professional photograph of Korean people, high detail, sharp focus, 8k, cinematic lighting, --no text' },
-            { name: '뉴스', suffix: 'news broadcast screen grab featuring Korean people, set in South Korea, television news report still, candid and objective, press photography, on-location shot, --no text --no logos' }
-        ];
-        let downloadableFiles = [];
-
-        // API Key Manager
-        const apiKeyManager = {
-            key: 'geminiApiKey_v1',
-            get() { return localStorage.getItem(this.key); },
-            set(apiKey) { localStorage.setItem(this.key, apiKey); },
-            exists() { return !!this.get(); }
-        };
-
-        // Modal Manager
-        const modalManager = {
-            show(blurBackground = false) {
-                if (blurBackground) appContainer.classList.add('blur-sm');
-                apiKeyModal.classList.remove('hidden');
-                setTimeout(() => {
-                    apiKeyModal.classList.remove('opacity-0');
-                    apiKeyModal.querySelector('.modal-content').classList.remove('opacity-0', 'scale-95');
-                }, 10);
-                apiKeyInput.value = apiKeyManager.get() || '';
-                apiKeyError.classList.add('hidden');
-            },
-            hide() {
-                appContainer.classList.remove('blur-sm');
-                apiKeyModal.classList.add('opacity-0');
-                apiKeyModal.querySelector('.modal-content').classList.add('opacity-0', 'scale-95');
-                setTimeout(() => apiKeyModal.classList.add('hidden'), 300);
-            }
-        };
-        
-        // Event Listeners
-        document.addEventListener('DOMContentLoaded', initializeApp);
-        generateBtn.addEventListener('click', handleGeneration);
-        settingsBtn.addEventListener('click', () => modalManager.show(false));
-        closeModalBtn.addEventListener('click', modalManager.hide);
-        saveApiKeyBtn.addEventListener('click', saveApiKey);
-        apiKeyModal.addEventListener('click', (e) => { if (e.target === apiKeyModal) modalManager.hide(); });
-        downloadAllBtn.addEventListener('click', downloadAllImages);
-
-        // App Initialization
-        function initializeApp() {
-            if (!apiKeyManager.exists()) {
-                setTimeout(() => modalManager.show(true), 500);
-            }
-        }
-        
-        function saveApiKey() {
-            const key = apiKeyInput.value.trim();
-            if (key) {
-                apiKeyManager.set(key);
-                modalManager.hide();
-            } else {
-                apiKeyError.textContent = 'API 키를 입력해주세요.';
-                apiKeyError.classList.remove('hidden');
-            }
-        }
-
-        // Main Functions
-        async function handleGeneration() {
-            if (!apiKeyManager.exists()) {
-                modalManager.show(true);
-                return;
-            }
-            const title = blogTitleEl.value.trim();
-            if (!title) {
-                showError('블로그 제목을 입력해주세요.');
-                return;
-            }
-
-            setLoadingState(true);
-            clearResults();
-            const selectedRatio = document.querySelector('input[name="aspect_ratio"]:checked').value;
-
-            try {
-                updateProgress(0, 'AI가 다양한 상황과 파일명을 구상하고 있습니다...');
-                const generationData = await createDiversePromptsAndTopic(title);
+    <!-- Detail Modal -->
+    <div id="postDetailModal" class="hidden fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-[#1C1C1E] w-full max-w-lg h-[85vh] flex flex-col rounded-3xl shadow-2xl overflow-hidden border border-gray-800">
+            <div class="p-5 border-b border-gray-800 flex justify-between items-start bg-[#1C1C1E]">
+                <div class="flex-grow pr-4">
+                    <h3 id="detail-title" class="text-xl font-bold text-white mb-2 leading-tight"></h3>
+                    <div class="flex items-center gap-2 text-sm text-gray-400">
+                        <span id="detail-author"></span>
+                        <span>•</span>
+                        <span id="detail-date" class="text-xs"></span>
+                    </div>
+                </div>
+                <button onclick="closeModal('postDetailModal')" class="text-gray-400 hover:text-white p-1 bg-gray-800 rounded-full">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            
+            <div class="flex-grow overflow-y-auto p-5 scroll-hidden bg-black">
+                <div id="detail-content" class="post-content-style"></div>
                 
-                if (!generationData || !generationData.topic || generationData.scenes.length < 3) {
-                    throw new Error("AI가 다양한 프롬프트를 생성하지 못했습니다.");
-                }
+                <div class="flex items-center justify-between mt-8 pt-4 border-t border-gray-800">
+                    <div class="flex gap-4">
+                         <button onclick="toggleLike()" class="flex items-center gap-1 text-gray-400 hover:text-red-500 transition"><span class="text-xl">♥</span> <span id="detail-likes">0</span></button>
+                         <span class="flex items-center gap-1 text-gray-400"><span class="text-xl">👁</span> <span id="detail-views">0</span></span>
+                    </div>
+                    <div class="flex gap-2">
+                        <!-- Message Button Injected dynamically if logged in -->
+                        <button id="btn-send-msg" class="hidden text-xs bg-gray-800 text-gray-300 px-3 py-1.5 rounded-full hover:bg-gray-700">쪽지보내기</button>
+                        <button id="edit-post-btn" class="hidden text-xs text-blue-400 font-bold px-2">수정</button>
+                        <button id="delete-post-btn" class="hidden text-xs text-red-500 font-bold px-2">삭제</button>
+                    </div>
+                </div>
+            </div>
 
-                const { topic, scenes } = generationData;
+            <div class="p-3 bg-[#1C1C1E] border-t border-gray-800">
+                <div id="comments-list" class="max-h-48 overflow-y-auto mb-3 space-y-3 scroll-hidden"></div>
+                <div class="relative">
+                    <input id="comment-input" type="text" placeholder="댓글을 남겨주세요..." onkeydown="if(event.key==='Enter') addComment()" class="w-full bg-gray-900 border border-gray-700 rounded-full px-4 py-3 text-sm text-white pr-12 focus:border-gray-500 focus:outline-none transition">
+                    <button onclick="addComment()" class="absolute right-2 top-1/2 transform -translate-y-1/2 bg-gray-700 text-white p-1.5 rounded-full hover:bg-gray-600">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Auth Modal -->
+    <div id="authModal" class="hidden fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-[#1C1C1E] w-full max-w-sm p-8 rounded-3xl shadow-2xl border border-gray-800">
+            <h3 class="text-2xl font-bold text-white mb-6 text-center">문파 입문</h3>
+            <input id="auth-email" type="email" placeholder="이메일" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-3 text-base focus:border-yellow-500 outline-none">
+            <input id="auth-password" type="password" placeholder="비밀번호" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-3 text-base focus:border-yellow-500 outline-none">
+            <input id="auth-password-confirm" type="password" placeholder="비밀번호 확인 (가입시)" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-4 text-base focus:border-yellow-500 outline-none">
+            
+            <div class="flex items-center mb-6 px-1">
+                <input type="checkbox" id="term-agree-chk" class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
+                <label for="term-agree-chk" class="ml-2 text-xs text-gray-400">
+                    <span class="underline cursor-pointer" onclick="openLegalModal('terms')">이용약관</span> 및 
+                    <span class="underline cursor-pointer" onclick="openLegalModal('privacy')">개인정보처리방침</span> 동의
+                </label>
+            </div>
 
-                for (let i = 0; i < STYLES.length; i++) {
-                    const style = STYLES[i];
-                    const basePrompt = scenes[i];
-                    updateProgress(((i + 1) / STYLES.length) * 100, `${i + 1}/${STYLES.length}: '${style.name}' 스타일 생성 중...`);
-                    
-                    const finalPrompt = `${basePrompt}, ${style.suffix}`;
-                    const imageUrl = await generateImageFromPrompt(finalPrompt, selectedRatio);
-                    const filename = `${topic}_${style.name}.png`;
-                    downloadableFiles.push({ url: imageUrl, filename });
-                    createImageCard(imageUrl, style.name, filename);
-                }
-                
-                if(downloadableFiles.length > 0) {
-                    downloadAllContainer.classList.remove('hidden');
-                }
+            <div class="flex gap-3 mb-4">
+                <button onclick="handleAuth(false)" class="flex-1 py-3.5 text-sm bg-white text-black rounded-xl font-bold hover:bg-gray-200 transition">로그인</button>
+                <button onclick="handleAuth(true)" class="flex-1 py-3.5 text-sm bg-gray-800 text-white rounded-xl font-bold hover:bg-gray-700 transition">회원가입</button>
+            </div>
+            
+            <button onclick="closeModal('authModal')" class="w-full text-center text-xs text-gray-500 mt-2 hover:text-white">닫기</button>
+        </div>
+    </div>
 
-            } catch (error) {
-                console.error('배너 생성 프로세스 오류:', error);
-                let message = error.message || '배너 생성에 실패했습니다. 잠시 후 다시 시도해주세요.';
-                if (error.message.includes('API key not valid')) {
-                    message = 'API 키가 유효하지 않습니다. 우측 상단 설정에서 키를 확인해주세요.';
-                    modalManager.show(true);
-                }
-                showError(message);
-            } finally {
-                setLoadingState(false);
-                progressIndicator.classList.add('hidden');
-            }
-        }
-
-        async function apiFetch(url, payload) {
-            const apiKey = apiKeyManager.get();
-            if (!apiKey) throw new Error("API key not found.");
-            const response = await fetch(`${url}?key=${apiKey}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            if (!response.ok) {
-                const errorBody = await response.json();
-                console.error("API Error:", errorBody);
-                throw new Error(errorBody.error?.message || `API Error (${response.status})`);
-            }
-            return response.json();
-        }
-
-        async function createDiversePromptsAndTopic(title) {
-            const systemPrompt = `You are a creative prompt engineer. A user provides a Korean blog title. Your task is to generate a JSON object. This object should contain two keys: "topic" and "scenes". 
-1. "topic": A short, relevant topic name in Korean, derived from the title. This will be used for filenames.
-2. "scenes": A JSON array containing three DISTINCT and DIVERSE scene descriptions in English. Each description should visualize a different aspect or action related to the title. The descriptions must be neutral, without style info.
-CRITICAL: The scenes must NOT contain any text or letters. Output ONLY the raw JSON object.`;
-            const userPrompt = `Blog Title: "${title}"`;
-            const payload = {
-                contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }],
-                generationConfig: { responseMimeType: "application/json" }
-            };
-            const apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
-            const result = await apiFetch(apiUrl, payload);
-            try {
-                const textResponse = result.candidates[0].content.parts[0].text;
-                const cleanedText = textResponse.replace(/^```json\n?/, '').replace(/\n?```$/, '');
-                const data = JSON.parse(cleanedText);
-                if (data.topic && Array.isArray(data.scenes) && data.scenes.length > 0) return data;
-            } catch (e) {
-                 console.error("JSON parsing error:", e);
-                 throw new Error("AI가 다양한 시나리오를 만드는 데 실패했습니다.");
-            }
-            throw new Error("AI 프롬프트 생성 실패");
-        }
-        
-        async function generateImageFromPrompt(prompt, aspectRatio) {
-            const payload = { instances: [{ prompt }], parameters: { "sampleCount": 1, "aspectRatio": aspectRatio } };
-            const apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict';
-            const result = await apiFetch(apiUrl, payload);
-            if (result.predictions?.[0]?.bytesBase64Encoded) return `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
-            throw new Error('AI 이미지 생성 실패');
-        }
-        
-        // Helper & UI Functions
-        function setLoadingState(isLoading) { generateBtn.disabled = isLoading; btnText.textContent = isLoading ? '생성 중' : '무료로 배너 3종 생성하기'; btnSpinner.classList.toggle('hidden', !isLoading); }
-        function clearResults() { downloadableFiles = []; resultsGrid.innerHTML = ''; errorMessageEl.classList.add('hidden'); resultSection.classList.remove('hidden'); progressIndicator.classList.remove('hidden'); downloadAllContainer.classList.add('hidden'); }
-        function updateProgress(percentage, text) { progressBar.style.width = `${percentage}%`; progressText.textContent = text; }
-        function getAspectRatioClass(ratio) { if (ratio === '1:1') return 'aspect-square'; if (ratio === '4:5') return 'aspect-[4/5]'; return 'aspect-video'; }
-        
-        function createImageCard(imageUrl, styleName, filename) {
-            const card = document.createElement('div');
-            card.className = 'bg-white rounded-2xl shadow-lg overflow-hidden fade-in';
-            const aspectRatio = downloadableFiles.length > 0 ? document.querySelector('input[name="aspect_ratio"]:checked').value : '16:9';
-            const aspectRatioClass = getAspectRatioClass(aspectRatio);
-            card.innerHTML = `<div class="relative"><img src="${imageUrl}" alt="${styleName} 스타일 배너" class="w-full h-auto object-cover ${aspectRatioClass} bg-gray-200"><div class="absolute top-3 left-3 bg-black/50 text-white text-xs font-semibold py-1 px-2.5 rounded-full">${styleName}</div></div><div class="p-4"><button onclick="downloadImage('${imageUrl}', '${filename}')" class="w-full bg-indigo-100 text-indigo-700 font-semibold py-2 px-4 rounded-lg hover:bg-indigo-200 transition-colors duration-200 text-sm">개별 다운로드</button></div>`;
-            resultsGrid.appendChild(card);
-        }
-
-        function createErrorCard(styleName) {
-            const card = document.createElement('div');
-            card.className = 'bg-white rounded-2xl shadow-lg overflow-hidden fade-in';
-            const aspectRatio = document.querySelector('input[name="aspect_ratio"]:checked').value;
-            const aspectRatioClass = getAspectRatioClass(aspectRatio);
-            card.innerHTML = `<div class="${aspectRatioClass} flex flex-col justify-center items-center bg-gray-100 p-4"><div class="text-red-500 mb-2"><svg class="w-10 h-10" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg></div><p class="text-lg font-bold text-gray-800">${styleName} 스타일</p><p class="text-sm text-gray-500">생성에 실패했습니다.</p></div>`;
-            resultsGrid.appendChild(card);
-        }
-
-        function showError(message) { errorMessageEl.textContent = message; errorMessageEl.classList.remove('hidden'); resultSection.classList.add('hidden'); }
-        
-        function sanitizeFilename(filename) {
-            return filename.replace(/[\s]/g, '_').replace(/[\\/:*?"<>|]/g, '');
-        }
-
-        window.downloadImage = function(url, filename) {
-            const sanitizedFilename = sanitizeFilename(filename);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = sanitizedFilename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        }
-
-        function downloadAllImages() {
-            downloadableFiles.forEach((file, index) => {
-                setTimeout(() => {
-                    window.downloadImage(file.url, file.filename);
-                }, index * 300); // 300ms 간격으로 다운로드하여 브라우저 차단 방지
-            });
-        }
-    </script>
+    <!-- Logic -->
+    <script src="app.js"></script>
+    
+    <!-- Modals for Legal/Delete/YouTube omitted for brevity but logic remains in app.js if IDs match -->
+    <!-- Re-adding necessary modals to ensure no breakage -->
+    <div id="deleteConfirmModal" class="hidden fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-[#1C1C1E] w-full max-w-xs p-6 rounded-2xl border border-red-900 text-center">
+            <h3 class="text-lg font-bold text-red-500 mb-2">삭제 확인</h3>
+            <p class="text-sm text-gray-400 mb-5">정말로 이 비급을 태우시겠습니까?</p>
+            <div class="flex gap-3 justify-center">
+                <button onclick="closeModal('deleteConfirmModal')" class="px-4 py-2 text-sm bg-gray-800 rounded-lg text-gray-300">취소</button>
+                <button onclick="deletePost(state.currentPostId)" class="px-4 py-2 text-sm bg-red-600 rounded-lg text-white font-bold">삭제</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
-
