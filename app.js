@@ -74,18 +74,51 @@ function calculateLevel(postCount, commentCount) {
 // 3. 인증 (Auth)
 // ------------------------------------------------------------------
 
+let currentAuthMode = 'login'; // 'login' or 'signup'
+
+window.switchAuthTab = function(mode) {
+    currentAuthMode = mode;
+    const loginTab = document.getElementById('tab-login');
+    const signupTab = document.getElementById('tab-signup');
+    const signupFields = document.getElementById('signup-fields');
+    const submitBtn = document.getElementById('auth-submit-btn');
+
+    if (mode === 'login') {
+        loginTab.className = 'flex-1 pb-3 text-sm font-bold text-white border-b-2 border-white transition';
+        signupTab.className = 'flex-1 pb-3 text-sm font-bold text-gray-500 border-b-2 border-transparent transition hover:text-gray-300';
+        signupFields.classList.add('hidden');
+        submitBtn.innerText = '로그인';
+        submitBtn.className = 'w-full py-3.5 text-sm bg-white text-black rounded-xl font-bold hover:bg-gray-200 transition mb-4';
+    } else {
+        signupTab.className = 'flex-1 pb-3 text-sm font-bold text-white border-b-2 border-white transition';
+        loginTab.className = 'flex-1 pb-3 text-sm font-bold text-gray-500 border-b-2 border-transparent transition hover:text-gray-300';
+        signupFields.classList.remove('hidden');
+        submitBtn.innerText = '가입하기';
+        submitBtn.className = 'w-full py-3.5 text-sm bg-yellow-600 text-white rounded-xl font-bold hover:bg-yellow-500 transition mb-4';
+    }
+}
+
+window.submitAuth = function() {
+    handleAuth(currentAuthMode === 'signup');
+}
+
 async function handleAuth(isSignUp) {
     const email = document.getElementById('auth-email').value;
     const password = document.getElementById('auth-password').value;
-    const passwordConfirm = document.getElementById('auth-password-confirm').value;
     
     if (!email || !password) {
         showToast('이메일과 비밀번호를 입력해주세요.', 'error'); 
         return;
     }
 
-    // 회원가입 시 비밀번호 확인 검증
+    if (password.length < 6) {
+        showToast('비밀번호는 최소 6자 이상이어야 합니다.', 'error');
+        return;
+    }
+
+    // 회원가입 시 추가 검증
     if (isSignUp) {
+        const passwordConfirm = document.getElementById('auth-password-confirm').value;
         if (password !== passwordConfirm) {
             showToast('비밀번호가 일치하지 않습니다.', 'error');
             return;
@@ -107,8 +140,12 @@ async function handleAuth(isSignUp) {
     if (error) {
         showToast(`인증 실패: ${error.message}`, 'error');
     } else {
-        if(isSignUp) showToast('입문 신청이 완료되었습니다. 이메일 인증을 확인해주세요.', 'success');
-        else console.log('성공적으로 문파에 입문했습니다!');
+        if(isSignUp) {
+            showToast('입문 신청이 완료되었습니다. 이메일 인증을 확인해주세요.', 'success');
+            // 가입 후 로그인 탭으로 전환하거나 모달 닫기 (여기선 닫기)
+        } else {
+            console.log('성공적으로 문파에 입문했습니다!');
+        }
         
         closeModal('authModal');
         checkSession();

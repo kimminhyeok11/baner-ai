@@ -4,8 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>천금문 (千金門)</title>
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐉</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -207,24 +209,38 @@
     <div id="authModal" class="hidden fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-[#1C1C1E] w-full max-w-sm p-8 rounded-3xl shadow-2xl border border-gray-800">
             <h3 class="text-2xl font-bold text-white mb-6 text-center">문파 입문</h3>
-            <input id="auth-email" type="email" placeholder="이메일" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-3 text-base focus:border-yellow-500 outline-none">
-            <input id="auth-password" type="password" placeholder="비밀번호" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-3 text-base focus:border-yellow-500 outline-none">
-            <input id="auth-password-confirm" type="password" placeholder="비밀번호 확인 (가입시)" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-4 text-base focus:border-yellow-500 outline-none">
             
-            <div class="flex items-center mb-6 px-1">
-                <input type="checkbox" id="term-agree-chk" class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
-                <label for="term-agree-chk" class="ml-2 text-xs text-gray-400">
-                    <span class="underline cursor-pointer" onclick="openLegalModal('terms')">이용약관</span> 및 
-                    <span class="underline cursor-pointer" onclick="openLegalModal('privacy')">개인정보처리방침</span> 동의
-                </label>
+            <!-- Tab Headers -->
+            <div class="flex border-b border-gray-700 mb-6">
+                <button id="tab-login" onclick="switchAuthTab('login')" class="flex-1 pb-3 text-sm font-bold text-white border-b-2 border-white transition">로그인</button>
+                <button id="tab-signup" onclick="switchAuthTab('signup')" class="flex-1 pb-3 text-sm font-bold text-gray-500 border-b-2 border-transparent transition hover:text-gray-300">회원가입</button>
             </div>
 
-            <div class="flex gap-3 mb-4">
-                <button onclick="handleAuth(false)" class="flex-1 py-3.5 text-sm bg-white text-black rounded-xl font-bold hover:bg-gray-200 transition">로그인</button>
-                <button onclick="handleAuth(true)" class="flex-1 py-3.5 text-sm bg-gray-800 text-white rounded-xl font-bold hover:bg-gray-700 transition">회원가입</button>
+            <!-- Common Inputs -->
+            <input id="auth-email" type="email" placeholder="이메일" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-3 text-base focus:border-yellow-500 outline-none">
+            <input id="auth-password" type="password" placeholder="비밀번호" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-2 text-base focus:border-yellow-500 outline-none">
+            
+            <div id="login-extras" class="flex justify-end mb-4">
+                <button onclick="openModal('forgotPasswordModal')" class="text-xs text-gray-400 hover:text-white">비밀번호를 잊으셨나요?</button>
             </div>
             
-            <button onclick="closeModal('authModal')" class="w-full text-center text-xs text-gray-500 mt-2 hover:text-white">닫기</button>
+            <!-- Signup Only Inputs -->
+            <div id="signup-fields" class="hidden">
+                <input id="auth-password-confirm" type="password" placeholder="비밀번호 확인" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-4 text-base focus:border-yellow-500 outline-none">
+                
+                <div class="flex items-center mb-6 px-1">
+                    <input type="checkbox" id="term-agree-chk" class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
+                    <label for="term-agree-chk" class="ml-2 text-xs text-gray-400">
+                        <span class="underline cursor-pointer" onclick="openLegalModal('terms')">이용약관</span> 및 
+                        <span class="underline cursor-pointer" onclick="openLegalModal('privacy')">개인정보처리방침</span> 동의
+                    </label>
+                </div>
+            </div>
+
+            <!-- Action Button -->
+            <button id="auth-submit-btn" onclick="submitAuth()" class="w-full py-3.5 text-sm bg-white text-black rounded-xl font-bold hover:bg-gray-200 transition mb-4">로그인</button>
+            
+            <button onclick="closeModal('authModal')" class="w-full text-center text-xs text-gray-500 hover:text-white">닫기</button>
         </div>
     </div>
 
