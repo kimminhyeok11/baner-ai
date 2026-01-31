@@ -141,14 +141,13 @@ async function handleAuth(isSignUp) {
         showToast(`인증 실패: ${error.message}`, 'error');
     } else {
         if(isSignUp) {
-            showToast('입문 신청이 완료되었습니다. 이메일 인증을 확인해주세요.', 'success');
-            // 가입 후 로그인 탭으로 전환하거나 모달 닫기 (여기선 닫기)
+            closeModal('authModal');
+            openModal('emailVerificationModal');
         } else {
             console.log('성공적으로 문파에 입문했습니다!');
+            closeModal('authModal');
+            checkSession();
         }
-        
-        closeModal('authModal');
-        checkSession();
     }
 }
 
@@ -183,7 +182,31 @@ async function logout() {
 async function checkSession() {
     const { data: { session } } = await client.auth.getSession();
     updateAuthState(session);
-    client.auth.onAuthStateChange((_event, session) => updateAuthState(session));
+    
+    client.auth.onAuthStateChange((event, session) => {
+        if (event === 'PASSWORD_RECOVERY') {
+            openModal('changePasswordModal');
+        }
+        updateAuthState(session);
+    });
+}
+
+window.submitChangePassword = async function() {
+    const newPassword = document.getElementById('new-password').value;
+    const confirmPassword = document.getElementById('confirm-new-password').value;
+    
+    if (newPassword.length < 6) return showToast('비밀번호는 6자 이상이어야 합니다.', 'error');
+    if (newPassword !== confirmPassword) return showToast('비밀번호가 일치하지 않습니다.', 'error');
+    
+    const { error } = await client.auth.updateUser({ password: newPassword });
+    
+    if (error) {
+        showToast('비밀번호 변경 실패: ' + error.message, 'error');
+    } else {
+        showToast('비밀번호가 변경되었습니다.', 'success');
+        closeModal('changePasswordModal');
+        // Optional: Redirect to home if needed, but we are already there
+    }
 }
 
 async function updateAuthState(session) {

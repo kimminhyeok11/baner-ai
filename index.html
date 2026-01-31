@@ -291,6 +291,36 @@
         </div>
     </div>
 
+    <!-- Change Password Modal (For Recovery) -->
+    <div id="changePasswordModal" class="hidden fixed inset-0 bg-black/60 z-[80] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-[#1C1C1E] w-full max-w-sm p-6 rounded-3xl shadow-2xl border border-gray-800">
+            <h3 class="text-lg font-bold text-white mb-2">비밀번호 변경</h3>
+            <p class="text-xs text-gray-400 mb-4">새로운 비밀번호를 입력해주세요.</p>
+            <input type="password" id="new-password" placeholder="새 비밀번호 (6자 이상)" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-3 text-sm focus:border-green-500 outline-none">
+            <input type="password" id="confirm-new-password" placeholder="비밀번호 확인" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-4 text-sm focus:border-green-500 outline-none">
+            <button onclick="submitChangePassword()" class="w-full py-3 text-sm bg-green-600 text-white rounded-xl font-bold hover:bg-green-500 transition shadow-lg shadow-green-900/20">비밀번호 변경</button>
+        </div>
+    </div>
+
+    <!-- Email Verification Modal -->
+    <div id="emailVerificationModal" class="hidden fixed inset-0 bg-black/80 z-[90] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-[#1C1C1E] w-full max-w-sm p-8 rounded-3xl shadow-2xl border border-yellow-600 text-center">
+            <div class="w-16 h-16 bg-yellow-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+            </div>
+            <h3 class="text-xl font-bold text-white mb-2">이메일 인증 확인</h3>
+            <p class="text-sm text-gray-300 mb-6 leading-relaxed">
+                가입하신 이메일로<br>
+                <span class="text-yellow-500 font-bold">인증 링크</span>가 발송되었습니다.<br><br>
+                메일함을 확인하여 링크를 클릭하시면<br>
+                입문 절차가 완료됩니다.
+            </p>
+            <button onclick="closeModal('emailVerificationModal')" class="w-full py-3.5 text-sm bg-yellow-600 text-white rounded-xl font-bold hover:bg-yellow-500 transition shadow-lg shadow-yellow-900/20">확인했습니다</button>
+        </div>
+    </div>
+
     <!-- Legal Modal -->
     <div id="legalModal" class="hidden fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-[#1C1C1E] w-full max-w-lg h-[80vh] flex flex-col rounded-2xl border border-gray-800">
