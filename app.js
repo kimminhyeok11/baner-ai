@@ -247,15 +247,15 @@ function updateHeaderUI() {
         const level = calculateLevel(state.profile.post_count, state.profile.comment_count);
         authContainer.innerHTML = `
             <div class="flex items-center space-x-2">
-                <span class="text-xs text-gray-400 hidden sm:inline">경지: <span class="${level.color} font-bold">${level.name}</span></span>
+                <span class="text-xs text-gray-400 hidden md:inline">경지: <span class="${level.color} font-bold">${level.name}</span></span>
                 <span class="text-xs text-gray-400 hidden sm:inline">반갑소, <span class="text-yellow-400 font-bold">${state.profile.nickname || '협객'}</span> 대협</span>
-                <button onclick="logout()" class="text-xs bg-red-900/50 text-red-200 px-3 py-1 rounded hover:bg-red-900 transition">하산</button>
+                <button onclick="logout()" class="text-xs bg-red-900/50 text-red-200 px-2 py-1 rounded hover:bg-red-900 transition whitespace-nowrap">하산</button>
             </div>
         `;
     } else {
         authContainer.innerHTML = `
-            <button onclick="openModal('authModal')" class="text-xs bg-yellow-600 text-white px-3 py-1 rounded font-bold hover:bg-yellow-500 transition shadow-lg animate-pulse">
-                강호 입문
+            <button onclick="openModal('authModal')" class="text-xs bg-yellow-600 text-white px-3 py-1.5 rounded font-bold hover:bg-yellow-500 transition shadow-lg animate-pulse whitespace-nowrap">
+                <span class="hidden sm:inline">강호 </span>입문
             </button>
         `;
     }
@@ -1452,7 +1452,7 @@ async function checkUnreadMessages() {
 
 window.openMessageModal = async function() {
     if (!state.user) {
-        showToast('입문이 필요합니다.', 'error');
+        showToast('입문이 필요하오.', 'error');
         openModal('authModal');
         return;
     }
@@ -1473,7 +1473,7 @@ async function loadMessageList() {
     list.innerHTML = '';
     
     if (messages.length === 0) {
-        list.innerHTML = '<div class="text-center text-gray-500 mt-10">받은 쪽지가 없소.</div>';
+        list.innerHTML = '<div class="text-center text-gray-500 mt-10">받은 밀서가 없소.</div>';
         return;
     }
     
@@ -1572,9 +1572,9 @@ window.submitMessage = async function() {
     });
     
     if (error) {
-        showToast('발송 불가: ' + error.message, 'error');
+        showToast('발송 불발: ' + error.message, 'error');
     } else {
-        showToast('쪽지를 보냈소.', 'success');
+        showToast('밀서를 보냈소.', 'success');
         cancelMessage(); // 목록으로 복귀
     }
 }
@@ -1687,7 +1687,7 @@ function setupGlobalRealtime() {
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
             if (state.user && payload.new.receiver_id === state.user.id) {
                 if (!state.profile || state.profile.receive_message_noti !== false) {
-                    showToast(`💌 새로운 쪽지가 도착했습니다!`, 'info');
+                    showToast(`💌 새로운 밀서가 당도했소!`, 'info');
                 }
                 checkUnreadMessages(); // 배지 업데이트
                 
@@ -1709,7 +1709,7 @@ function setupGlobalRealtime() {
             state.stockTags.push(payload.new.name);
             renderStockTabs();
             renderStockOptions();
-            showToast(`📈 새로운 종목 [${payload.new.name}]이(가) 등록되었습니다!`, 'info');
+            showToast(`📈 새로운 종목 [${payload.new.name}]이(가) 등재되었소!`, 'info');
         })
         .subscribe();
     state.realtimeChannels['global_stocks'] = stockChannel;
@@ -1765,7 +1765,7 @@ async function handleNewPostRealtime(newPost) {
     // 여기서는 "실시간 응답"을 위해 현재 뷰가 아니더라도 중요 알림(예: 내 종목) 등을 띄울 수 있음.
     // 일단은 현재 뷰에 추가되었을 때 토스트
     if (isRelevant) {
-        showToast('새로운 비급이 실시간으로 도착했습니다!', 'success');
+        showToast('새로운 비급이 당도했소!', 'success');
     }
 }
 
@@ -1795,28 +1795,45 @@ window.getCurrentViewType = function() {
 };
 
 window.tryOpenWriteModal = (type) => {
-    if (type !== 'secret' && !state.user) {
-        if(confirm('비급 기록은 입문한 협객만 가능하오. 입문하시겠소?')) openModal('authModal');
-        return;
-    }
-    
-    if (type === 'secret' && !state.user) {
-        const today = new Date().toISOString().split('T')[0];
-        const count = parseInt(localStorage.getItem(`post_count_${today}`) || '0');
-        if (count >= 3) {
-            showToast('하루에 3개의 익명 비급만 집필할 수 있소.', 'error');
+    try {
+        console.log('tryOpenWriteModal 호출됨:', type);
+        if (type !== 'secret' && !state.user) {
+            if(confirm('비급 기록은 입문한 협객만 가능하오. 입문하시겠소?')) openModal('authModal');
             return;
         }
-    }
+        
+        if (type === 'secret' && !state.user) {
+            const today = new Date().toISOString().split('T')[0];
+            const count = parseInt(localStorage.getItem(`post_count_${today}`) || '0');
+            if (count >= 3) {
+                showToast('하루에 3개의 익명 비급만 집필할 수 있소.', 'error');
+                return;
+            }
+        }
 
-    resetPostStateAndUI(); 
-    document.getElementById(`type-${type}`).checked = true;
-    togglePostTypeFields(type);
-    openModal('newPostModal');
-    if (type === 'stock') document.getElementById('stock-input').value = state.currentStockName;
-    
-    checkAndLoadTempPost();
-    document.getElementById('new-post-content').focus();
+        resetPostStateAndUI(); 
+        const radio = document.getElementById(`type-${type}`);
+        if(radio) radio.checked = true;
+        
+        togglePostTypeFields(type);
+        openModal('newPostModal');
+        
+        if (type === 'stock') {
+            const stockInput = document.getElementById('stock-input');
+            if(stockInput) stockInput.value = state.currentStockName;
+        }
+        
+        checkAndLoadTempPost();
+        
+        setTimeout(() => {
+            const editor = document.getElementById('new-post-content');
+            if(editor) editor.focus();
+        }, 100);
+        
+    } catch (err) {
+        console.error('글쓰기 모달 열기 실패:', err);
+        showToast('글쓰기 창을 여는데 문제가 생겼소.', 'error');
+    }
 };
 
 window.togglePostTypeFields = (type) => {

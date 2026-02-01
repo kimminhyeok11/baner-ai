@@ -257,7 +257,7 @@
     </nav>
     
     <!-- Floating Action Button -->
-    <button id="fab-write-btn" onclick="tryOpenWriteModal(getCurrentViewType())" class="fixed bottom-20 right-6 w-14 h-14 bg-yellow-500 text-black rounded-full shadow-2xl flex items-center justify-center text-3xl font-light hover:scale-105 transition-transform z-50">
+    <button id="fab-write-btn" onclick="tryOpenWriteModal(getCurrentViewType())" class="fixed bottom-24 right-6 w-14 h-14 bg-yellow-500 text-black rounded-full shadow-2xl flex items-center justify-center text-3xl font-light hover:scale-105 transition-transform z-50">
         <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
     </button>
     
@@ -519,18 +519,18 @@
             <p class="text-xs text-gray-400 mb-4">건전한 강호를 위해 협조 부탁하오.</p>
             
             <select id="report-reason" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-3 text-sm focus:border-red-500 outline-none">
-                <option value="spam">광고 / 도배 행위</option>
-                <option value="abuse">욕설 / 비하</option>
-                <option value="adult">음란 / 부적절한 내용</option>
-                <option value="fraud">사기 / 거짓 정보</option>
-                <option value="other">기타</option>
+                <option value="spam">벽서 남발 (광고/도배)</option>
+                <option value="abuse">언사 불손 (욕설/비하)</option>
+                <option value="adult">풍기 문란 (음란/부적절)</option>
+                <option value="fraud">혹세무민 (사기/거짓)</option>
+                <option value="other">기타 사유</option>
             </select>
             
-            <textarea id="report-details" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-4 text-sm focus:border-red-500 outline-none h-24 resize-none" placeholder="상세 내용을 적으시오 (선택사항)"></textarea>
+            <textarea id="report-details" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-4 text-sm focus:border-red-500 outline-none h-24 resize-none" placeholder="상세 사유를 적으시오 (선택사항)"></textarea>
             
             <div class="flex gap-2">
-                <button onclick="closeModal('reportModal')" class="flex-1 py-3 text-sm bg-gray-800 text-gray-300 rounded-xl font-bold">취소</button>
-                <button onclick="submitReport()" class="flex-1 py-3 text-sm bg-red-600 text-white rounded-xl font-bold">신고 접수</button>
+                <button onclick="closeModal('reportModal')" class="flex-1 py-3 text-sm bg-gray-800 text-gray-300 rounded-xl font-bold">철회</button>
+                <button onclick="submitReport()" class="flex-1 py-3 text-sm bg-red-600 text-white rounded-xl font-bold">관아 고발</button>
             </div>
         </div>
     </div>
