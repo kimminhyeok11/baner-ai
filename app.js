@@ -1050,6 +1050,7 @@ function createPostElement(post) {
 
     const postEl = document.createElement('div');
     postEl.className = 'bg-[#1f2937] p-4 rounded-xl shadow-lg border border-gray-700 hover:border-yellow-600 transition cursor-pointer';
+    postEl.dataset.postId = post.id;
     postEl.onclick = () => openPostDetail(post);
 
     postEl.innerHTML = `
@@ -1163,6 +1164,7 @@ window.openPostDetail = async function(post) {
     
     const author = post.profiles?.nickname || post.guest_nickname || '익명 무협객';
     document.getElementById('detail-author').innerText = author;
+    document.getElementById('detail-date').innerText = new Date(post.created_at).toLocaleString();
     document.getElementById('detail-likes').innerText = post.like_count || 0;
 
     const metaContainer = document.getElementById('detail-meta-container');
@@ -1691,8 +1693,9 @@ function init() {
     }
     
     window.onclick = function(event) {
-        if (event.target.classList.contains('fixed')) {
-            event.target.classList.add('hidden');
+        const t = event.target;
+        if (t.classList.contains('fixed') && typeof t.id === 'string' && t.id.endsWith('Modal')) {
+            t.classList.add('hidden');
         }
     }
     
@@ -1776,6 +1779,8 @@ async function handleNewPostRealtime(newPost) {
             
         if (fullPost) {
             const container = document.getElementById(containerId);
+            // 중복 방지: 이미 동일 ID의 카드가 있으면 추가하지 않음
+            if (container.querySelector(`[data-post-id="${fullPost.id}"]`)) return;
             const newEl = createPostElement(fullPost);
             newEl.classList.add('animate-pulse'); // 강조 효과
             
@@ -1805,6 +1810,14 @@ window.openModal = (id) => document.getElementById(id).classList.remove('hidden'
 window.closeModal = (id) => {
     document.getElementById(id).classList.add('hidden');
     if (id === 'newPostModal') resetPostStateAndUI();
+    if (id === 'postDetailModal') {
+        const key = state.currentPostId ? `comments_${state.currentPostId}` : null;
+        if (key && state.realtimeChannels[key]) {
+            client.removeChannel(state.realtimeChannels[key]);
+            delete state.realtimeChannels[key];
+        }
+        state.currentPostId = null;
+    }
 };
 window.navigate = navigate;
 window.handleAuth = handleAuth;
@@ -1997,6 +2010,7 @@ window.markAllNotificationsRead = async function() {
     loadNotifications();
     checkUnreadNotifications();
     showToast('모든 전갈을 확인했소.', 'success');
+    closeModal('notificationModal');
 }
 
 async function checkUnreadNotifications() {
@@ -2014,8 +2028,13 @@ async function checkUnreadNotifications() {
     }
 }
 
+function setupRealtimeMessages() {
+    checkUnreadMessages();
+}
+
 function setupRealtimeNotifications() {
     if (!state.user) return;
+    if (state.realtimeChannels['notifications']) client.removeChannel(state.realtimeChannels['notifications']);
     
     const channel = client.channel('public:notifications')
         .on('postgres_changes', { 

@@ -354,7 +354,7 @@
             <div class="p-5 border-b border-gray-800 flex justify-between items-start bg-[#1C1C1E]">
                 <div class="flex-grow pr-4">
                     <h3 id="detail-title" class="text-xl font-bold text-white mb-2 leading-tight"></h3>
-                    <div class="flex items-center gap-2 text-sm text-gray-400">
+                    <div id="detail-meta-container" class="flex items-center gap-2 text-sm text-gray-400">
                         <span id="detail-author"></span>
                         <span>•</span>
                         <span id="detail-date" class="text-xs"></span>
@@ -442,7 +442,8 @@
     <div id="deleteConfirmModal" class="hidden fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-[#1C1C1E] w-full max-w-xs p-6 rounded-2xl border border-red-900 text-center">
             <h3 class="text-lg font-bold text-red-500 mb-2">삭제 확인</h3>
-            <p class="text-sm text-gray-400 mb-5">정말로 이 비급을 태우시겠습니까?</p>
+            <p class="text-sm text-gray-400 mb-1">정말로 아래의 비급을 태우시겠습니까?</p>
+            <p id="confirm-delete-title" class="text-xs text-gray-300 mb-4 break-words"></p>
             <div class="flex gap-3 justify-center">
                 <button onclick="closeModal('deleteConfirmModal')" class="px-4 py-2 text-sm bg-gray-800 rounded-lg text-gray-300">철회</button>
                 <button onclick="deletePost(state.currentPostId)" class="px-4 py-2 text-sm bg-red-600 rounded-lg text-white font-bold">삭제</button>
