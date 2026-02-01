@@ -1156,30 +1156,40 @@ window.openPostDetail = async function(post) {
     if (post.type !== 'secret') {
         const newViewCount = (post.view_count || 0) + 1;
         await client.from('posts').update({ view_count: newViewCount }).eq('id', post.id);
-        document.getElementById('detail-views').innerText = newViewCount;
+        const viewsEl = document.getElementById('detail-views');
+        if (viewsEl) viewsEl.innerText = newViewCount;
     }
 
-    document.getElementById('detail-title').innerText = post.title;
-    document.getElementById('detail-content').innerHTML = post.content;
+    const titleEl = document.getElementById('detail-title');
+    if (titleEl) titleEl.innerText = post.title;
+    const contentEl = document.getElementById('detail-content');
+    if (contentEl) contentEl.innerHTML = post.content;
     
     const author = post.profiles?.nickname || post.guest_nickname || '익명 무협객';
-    document.getElementById('detail-author').innerText = author;
-    document.getElementById('detail-date').innerText = new Date(post.created_at).toLocaleString();
-    document.getElementById('detail-likes').innerText = post.like_count || 0;
+    const authorEl = document.getElementById('detail-author');
+    if (authorEl) authorEl.innerText = author;
+    const dateEl = document.getElementById('detail-date');
+    if (dateEl) dateEl.innerText = new Date(post.created_at).toLocaleString();
+    const likesEl = document.getElementById('detail-likes');
+    if (likesEl) likesEl.innerText = post.like_count || 0;
 
     const metaContainer = document.getElementById('detail-meta-container');
-    if (post.type === 'secret') {
-        metaContainer.classList.add('hidden');
-    } else {
-        metaContainer.classList.remove('hidden');
+    if (metaContainer) {
+        if (post.type === 'secret') {
+            metaContainer.classList.add('hidden');
+        } else {
+            metaContainer.classList.remove('hidden');
+        }
     }
     
     const isAuthor = state.user?.id === post.user_id;
     const isAdmin = state.profile?.role === 'admin';
     const canEdit = isAuthor || isAdmin;
     const canDelete = isAuthor || isAdmin;
-    document.getElementById('delete-post-btn').classList.toggle('hidden', !canDelete);
-    document.getElementById('edit-post-btn').classList.toggle('hidden', !canEdit);
+    const delBtn = document.getElementById('delete-post-btn');
+    if (delBtn) delBtn.classList.toggle('hidden', !canDelete);
+    const editBtn = document.getElementById('edit-post-btn');
+    if (editBtn) editBtn.classList.toggle('hidden', !canEdit);
     
     // 쪽지 보내기 버튼 로직
     const msgBtn = document.getElementById('btn-send-msg');
@@ -1190,11 +1200,14 @@ window.openPostDetail = async function(post) {
         msgBtn.onclick = () => openMessageCompose(post.user_id, author);
     }
     
-    document.getElementById('delete-post-btn').onclick = () => {
-        document.getElementById('confirm-delete-title').innerText = state.postToEdit.title;
-        openModal('deleteConfirmModal');
-    };
-    document.getElementById('edit-post-btn').onclick = () => openPostEditModal(post);
+    if (delBtn) {
+        delBtn.onclick = () => {
+            const cdt = document.getElementById('confirm-delete-title');
+            if (cdt) cdt.innerText = state.postToEdit.title;
+            openModal('deleteConfirmModal');
+        };
+    }
+    if (editBtn) editBtn.onclick = () => openPostEditModal(post);
     
     loadComments(post.id);
     modal.classList.remove('hidden');
@@ -1397,12 +1410,12 @@ window.deleteComment = async function(commentId, userId) {
 
 function setupRealtimeComments(postId) {
     const channelKey = `comments_${postId}`;
-    if (state.realtimeChannels[channelKey]) client.removeChannel(state.realtimeChannels[channelKey]);
-    const channel = client.channel(channelKey)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'comments', filter: `post_id=eq.${postId}` }, 
-            () => loadComments(postId)
-        ).subscribe();
-    state.realtimeChannels[channelKey] = channel;
+    ensureChannel(channelKey, () =>
+        client.channel(channelKey)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'comments', filter: `post_id=eq.${postId}` }, 
+                () => loadComments(postId)
+            ).subscribe()
+    );
 }
 
 // ------------------------------------------------------------------
@@ -1440,9 +1453,11 @@ async function sendChat() {
 }
 
 function setupRealtimeChat() {
-     if (state.realtimeChannels['chat']) client.removeChannel(state.realtimeChannels['chat']);
-    const channel = client.channel('chat').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, () => loadChat()).subscribe();
-    state.realtimeChannels['chat'] = channel;
+    ensureChannel('chat', () =>
+        client.channel('chat')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, () => loadChat())
+            .subscribe()
+    );
 }
 
 // ------------------------------------------------------------------
@@ -1699,6 +1714,7 @@ function init() {
         }
     }
     
+    attachRealtimeDiagnostics();
     setupGlobalRealtime();
 }
 
@@ -1706,46 +1722,73 @@ function init() {
 // 10. 글로벌 실시간 (Posts, Messages, StockTags)
 // ------------------------------------------------------------------
 
+function ensureChannel(name, builder) {
+    try {
+        if (state.realtimeChannels[name]) client.removeChannel(state.realtimeChannels[name]);
+        const ch = builder();
+        ch.on('status', (s) => {
+            if (s === 'TIMED_OUT' || s === 'CHANNEL_ERROR') {
+                setTimeout(() => ensureChannel(name, builder), 3000);
+            }
+        });
+        state.realtimeChannels[name] = ch;
+        return ch;
+    } catch (e) {
+        console.error('채널 생성 실패:', name, e);
+        return null;
+    }
+}
+
+function attachRealtimeDiagnostics() {
+    try {
+        client.realtime.onOpen(() => console.log('Realtime 연결 열림'));
+        client.realtime.onClose(() => console.warn('Realtime 연결 종료'));
+        client.realtime.onError((e) => {
+            console.error('Realtime 오류:', e);
+            showToast('실시간 연결에 문제가 있소. 잠시 후 재시도하오.', 'error');
+        });
+    } catch (e) {}
+}
+
 function setupGlobalRealtime() {
     // 1. Posts (모든 게시글 변경 감지)
-    const postChannel = client.channel('public:posts')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, payload => {
-            handleNewPostRealtime(payload.new);
-        })
-        .subscribe();
-    state.realtimeChannels['global_posts'] = postChannel;
+    ensureChannel('global_posts', () => 
+        client.channel('public:posts')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, payload => {
+                handleNewPostRealtime(payload.new);
+            })
+            .subscribe()
+    );
 
     // 2. Messages (나에게 온 쪽지)
-    const msgChannel = client.channel('public:messages')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-            if (state.user && payload.new.receiver_id === state.user.id) {
-                if (!state.profile || state.profile.receive_message_noti !== false) {
-                    showToast(`💌 새로운 밀서가 당도했소!`, 'info');
+    ensureChannel('global_messages', () =>
+        client.channel('public:messages')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+                if (state.user && payload.new.receiver_id === state.user.id) {
+                    if (!state.profile || state.profile.receive_message_noti !== false) {
+                        showToast(`💌 새로운 밀서가 당도했소!`, 'info');
+                    }
+                    checkUnreadMessages();
+                    const msgList = document.getElementById('message-list');
+                    if (!msgList.classList.contains('hidden') && !document.getElementById('messageModal').classList.contains('hidden')) {
+                         loadMessageList();
+                    }
                 }
-                checkUnreadMessages(); // 배지 업데이트
-                
-                // 만약 쪽지함이 열려있다면 리스트 갱신
-                const msgList = document.getElementById('message-list');
-                if (!msgList.classList.contains('hidden') && !document.getElementById('messageModal').classList.contains('hidden')) {
-                     // 전체 리로드보다는 맨 위에 추가하는게 좋지만, 간단히 리로드
-                     loadMessageList();
-                }
-            }
-        })
-        .subscribe();
-    state.realtimeChannels['global_messages'] = msgChannel;
+            })
+            .subscribe()
+    );
 
     // 3. Stock Tags (새로운 종목 추가)
-    const stockChannel = client.channel('public:stock_tags')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'stock_tags' }, payload => {
-            // 태그 목록 갱신
-            state.stockTags.push(payload.new.name);
-            renderStockTabs();
-            renderStockOptions();
-            showToast(`📈 새로운 종목 [${payload.new.name}]이(가) 등재되었소!`, 'info');
-        })
-        .subscribe();
-    state.realtimeChannels['global_stocks'] = stockChannel;
+    ensureChannel('global_stocks', () =>
+        client.channel('public:stock_tags')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'stock_tags' }, payload => {
+                state.stockTags.push(payload.new.name);
+                renderStockTabs();
+                renderStockOptions();
+                showToast(`📈 새로운 종목 [${payload.new.name}]이(가) 등재되었소!`, 'info');
+            })
+            .subscribe()
+    );
 }
 
 async function handleNewPostRealtime(newPost) {
