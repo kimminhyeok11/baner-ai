@@ -19,6 +19,34 @@ create table if not exists public.post_likes (
 );
 alter table public.post_likes enable row level security;
 
+do $$
+begin
+  if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'avatar_url') then
+    alter table public.profiles add column avatar_url text;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'banner_url') then
+    alter table public.profiles add column banner_url text;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'receive_comment_noti') then
+    alter table public.profiles add column receive_comment_noti boolean default true;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'receive_like_noti') then
+    alter table public.profiles add column receive_like_noti boolean default true;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'receive_message_noti') then
+    alter table public.profiles add column receive_message_noti boolean default true;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'badge_style') then
+    alter table public.profiles add column badge_style text default 'auto';
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'badge_icon') then
+    alter table public.profiles add column badge_icon text;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'theme_style') then
+    alter table public.profiles add column theme_style text default 'dark';
+  end if;
+end $$;
+
 -- 정책: 기존 정책이 있으면 오류가 발생할 수 있으므로 drop 후 create
 drop policy if exists "Likes are viewable by everyone" on public.post_likes;
 create policy "Likes are viewable by everyone"
@@ -105,10 +133,12 @@ returns trigger as $$
 declare
   post_author_id uuid;
   post_title text;
+  allow boolean;
 begin
   select user_id, title into post_author_id, post_title from public.posts where id = new.post_id;
+  select coalesce(receive_comment_noti, true) into allow from public.profiles where id = post_author_id;
   
-  if post_author_id is not null and post_author_id != new.user_id then
+  if post_author_id is not null and post_author_id != new.user_id and coalesce(allow, true) = true then
     insert into public.notifications (user_id, type, content, link)
     values (post_author_id, 'comment', '새로운 댓글이 달렸습니다: ' || coalesce(new.content, '내용 없음'), 'post:' || new.post_id);
   end if;
@@ -121,6 +151,45 @@ create trigger on_comment_created
   after insert on public.comments
   for each row execute procedure public.handle_new_comment();
 
+create or replace function public.handle_new_like()
+returns trigger as $$
+declare
+  post_author_id uuid;
+  allow boolean;
+begin
+  select user_id into post_author_id from public.posts where id = new.post_id;
+  select coalesce(receive_like_noti, true) into allow from public.profiles where id = post_author_id;
+  if post_author_id is not null and post_author_id != new.user_id and coalesce(allow, true) = true then
+    insert into public.notifications (user_id, type, content, link)
+    values (post_author_id, 'like', '누군가 당신의 비급을 추천했습니다.', 'post:' || new.post_id);
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_post_liked on public.post_likes;
+create trigger on_post_liked
+  after insert on public.post_likes
+  for each row execute procedure public.handle_new_like();
+
+create or replace function public.handle_new_message()
+returns trigger as $$
+declare
+  allow boolean;
+begin
+  select coalesce(receive_message_noti, true) into allow from public.profiles where id = new.receiver_id;
+  if coalesce(allow, true) = true then
+    insert into public.notifications (user_id, type, content, link)
+    values (new.receiver_id, 'message', '새로운 쪽지가 도착했습니다.', 'message:' || new.id);
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_message_created on public.messages;
+create trigger on_message_created
+  after insert on public.messages
+  for each row execute procedure public.handle_new_message();
 
 -- 4. Realtime 설정 추가
 -- 기존에 추가되어 있을 수 있으므로 오류 방지
@@ -131,5 +200,8 @@ begin
   end if;
   if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'notifications') then
     alter publication supabase_realtime add table public.notifications;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'messages') then
+    alter publication supabase_realtime add table public.messages;
   end if;
 end $$;

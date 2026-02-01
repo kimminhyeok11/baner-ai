@@ -15,11 +15,11 @@
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body class="min-h-screen flex flex-col relative">
+<body class="h-screen flex flex-col overflow-hidden bg-black text-white">
     <div id="toast-container" class="fixed bottom-20 left-1/2 transform -translate-x-1/2 z-[100] flex flex-col gap-2 w-max max-w-[90vw]"></div>
 
     <!-- Header -->
-    <header class="sticky top-0 z-40 glass glass-border">
+    <header class="flex-none z-40 glass glass-border">
         <div class="max-w-md mx-auto px-4 h-14 flex items-center justify-between">
             <h1 class="text-2xl font-black tracking-tighter cursor-pointer select-none transition-all duration-300 hover:scale-105" 
                 onclick="navigate('gangho-plaza')"
@@ -38,15 +38,9 @@
                 <div id="auth-buttons"></div>
             </div>
         </div>
-        <nav class="flex justify-around glass-border bg-[#1C1C1E]">
-            <button onclick="navigate('gangho-plaza')" class="nav-btn flex-1 py-3 text-sm font-medium active">광장</button>
-            <button onclick="navigate('stock-board')" class="nav-btn flex-1 py-3 text-sm font-medium">비급</button>
-            <button onclick="navigate('chat-hall')" class="nav-btn flex-1 py-3 text-sm font-medium">채팅</button>
-            <button onclick="navigate('secret-inn')" class="nav-btn flex-1 py-3 text-sm font-medium">객잔</button>
-        </nav>
     </header>
 
-    <main class="flex-grow max-w-md mx-auto w-full pb-24 p-4">
+    <main class="flex-grow overflow-y-auto w-full max-w-md mx-auto p-4 scroll-hidden">
         <div id="gangho-plaza" class="app-view">
             <h2 class="text-2xl font-bold text-white mb-6">강호 광장</h2>
             <div class="space-y-4" id="posts-list-public"></div>
@@ -61,23 +55,209 @@
             <div class="space-y-4" id="posts-list-stock"></div>
         </div>
         <div id="chat-hall" class="app-view hidden">
-            <h2 class="text-2xl font-bold text-white mb-6">무림 채팅</h2>
+            <h2 class="text-2xl font-bold text-white mb-6">무림 전음</h2>
             <div id="chat-list" class="bg-[#1C1C1E] p-4 rounded-2xl h-[60vh] overflow-y-auto scroll-hidden mb-4 border border-gray-800"></div>
             <div class="flex gap-2 items-center bg-[#1C1C1E] p-2 rounded-full border border-gray-800">
-                <input id="chat-input" type="text" placeholder="메시지를 입력하세요..." onkeydown="if(event.key==='Enter') sendChat()" class="flex-grow bg-transparent px-4 py-2 text-base text-white focus:outline-none">
+                <input id="chat-input" type="text" placeholder="전음을 보내시오..." onkeydown="if(event.key==='Enter') sendChat()" class="flex-grow bg-transparent px-4 py-2 text-base text-white focus:outline-none">
                 <button onclick="sendChat()" class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white hover:bg-blue-500 transition">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                 </button>
             </div>
         </div>
         <div id="secret-inn" class="app-view hidden">
-            <h2 class="text-2xl font-bold text-white mb-6">암천 객잔</h2>
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-white">암천 객잔</h2>
+                <button onclick="tryOpenWriteModal('secret')" class="text-xs bg-yellow-900/50 text-yellow-500 font-bold px-3 py-1.5 rounded-lg border border-yellow-700/50 hover:bg-yellow-900 transition">
+                    ✍️ 익명 글쓰기
+                </button>
+            </div>
             <div class="space-y-4" id="posts-list-secret"></div>
+        </div>
+        
+        <!-- My Page View -->
+        <div id="my-page" class="app-view hidden">
+            <h2 class="text-2xl font-bold text-white mb-6">나의 본거지 (本據地)</h2>
+            
+            <!-- Profile Card -->
+            <div id="my-profile-card" class="bg-[#1C1C1E] p-6 rounded-3xl shadow-lg border border-gray-800 mb-8 text-center relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-500 to-transparent opacity-50"></div>
+                
+                 <div class="w-20 h-20 bg-gray-700 rounded-full mx-auto mb-4 flex items-center justify-center text-3xl shadow-inner border-2 border-gray-600 relative overflow-hidden">
+                     <img id="my-avatar" class="w-full h-full object-cover hidden" alt="avatar">
+                     <span id="my-profile-icon">👤</span>
+                     <span id="my-badge-icon" class="absolute top-0 left-0 w-6 h-6 rounded-full bg-black/60 text-white text-xs flex items-center justify-center border border-gray-700 hidden">🐉</span>
+                    <span id="my-level-badge" class="absolute -bottom-1 -right-1 bg-yellow-600 text-black text-[10px] font-bold px-2 py-0.5 rounded-full border border-[#1C1C1E]">입문</span>
+                </div>
+                
+                <h3 id="my-nickname" class="text-xl font-bold text-white mb-1">익명의 협객</h3>
+                <p id="my-email" class="text-xs text-gray-500 mb-4">입문이 필요하오</p>
+                
+                <div class="flex justify-around border-t border-gray-700 pt-4">
+                    <div class="text-center">
+                        <div class="text-xs text-gray-500 mb-1">비급(글)</div>
+                        <div id="stat-posts" class="text-lg font-bold text-white">0</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-xs text-gray-500 mb-1">전서(댓글)</div>
+                        <div id="stat-comments" class="text-lg font-bold text-white">0</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-xs text-gray-500 mb-1">명성(추천)</div>
+                        <div id="stat-likes" class="text-lg font-bold text-yellow-500">0</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tabs -->
+            <div class="flex border-b border-gray-800 mb-4">
+                <button onclick="switchMyPageTab('posts')" id="tab-my-posts" class="flex-1 pb-2 text-sm font-medium text-yellow-500 border-b-2 border-yellow-500 transition">나의 비급</button>
+                 <button onclick="switchMyPageTab('activity')" id="tab-my-activity" class="flex-1 pb-2 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition">행적</button>
+                <button onclick="switchMyPageTab('bookmarks')" id="tab-my-bookmarks" class="flex-1 pb-2 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition">관심 비급</button>
+                 <button onclick="switchMyPageTab('notifications')" id="tab-my-notifications" class="flex-1 pb-2 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition">전갈</button>
+                <button onclick="switchMyPageTab('settings')" id="tab-my-settings" class="flex-1 pb-2 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition">면모 정비</button>
+            </div>
+            
+            <!-- Tab Contents -->
+            <div id="my-posts-area" class="space-y-4 min-h-[200px]">
+                <!-- Posts injected here -->
+                <div class="text-center text-gray-500 py-10">작성한 비급이 없소.</div>
+            </div>
+            
+            <div id="my-bookmarks-area" class="hidden space-y-4 min-h-[200px]">
+                <!-- Bookmarks injected here -->
+                <div class="text-center text-gray-500 py-10">아직 관심 비급이 없소.</div>
+            </div>
+             
+             <div id="my-notifications-area" class="hidden space-y-4 min-h-[200px]">
+                 <div class="flex justify-between items-center">
+                     <div class="text-xs text-gray-400">나의 전갈</div>
+                     <div class="flex items-center gap-2">
+                         <button onclick="switchNotificationsFilter('all')" id="noti-filter-all" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">전체</button>
+                         <button onclick="switchNotificationsFilter('comment')" id="noti-filter-comment" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">전서</button>
+                         <button onclick="switchNotificationsFilter('like')" id="noti-filter-like" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">명성</button>
+                         <button onclick="switchNotificationsFilter('message')" id="noti-filter-message" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">밀서</button>
+                         <button onclick="markAllNotificationsRead()" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">모두 확인</button>
+                     </div>
+                 </div>
+                 <div id="my-notifications-list" class="space-y-2"></div>
+             </div>
+             
+             <div id="my-activity-area" class="hidden space-y-4 min-h-[200px]">
+                 <div class="flex items-center justify-between">
+                     <div class="text-xs text-gray-400">최근 행적</div>
+                     <div class="flex gap-2">
+                         <button onclick="switchActivityFilter('all')" id="act-filter-all" class="px-3 py-1 rounded-full text-xs bg-gray-800 text-gray-300 border border-gray-700">전체</button>
+                         <button onclick="switchActivityFilter('comment')" id="act-filter-comment" class="px-3 py-1 rounded-full text-xs bg-gray-800 text-gray-300 border border-gray-700">전서</button>
+                         <button onclick="switchActivityFilter('like')" id="act-filter-like" class="px-3 py-1 rounded-full text-xs bg-gray-800 text-gray-300 border border-gray-700">명성</button>
+                     </div>
+                 </div>
+                 <div id="activity-list" class="space-y-2"></div>
+             </div>
+            
+            <div id="my-settings-area" class="hidden space-y-6 p-2">
+                 <div>
+                     <h4 class="text-sm font-bold text-gray-400 mb-3">문파 깃발 (배너)</h4>
+                    <div class="flex items-center gap-2">
+                        <input id="banner-input" type="file" accept="image/*" class="flex-grow bg-black border border-gray-700 rounded-xl px-3 py-2 text-white">
+                        <button onclick="updateBanner()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">교체</button>
+                    </div>
+                </div>
+                <div>
+                    <h4 class="text-sm font-bold text-gray-400 mb-3">용모 (프로필)</h4>
+                    <div class="flex items-center gap-2">
+                        <input id="avatar-input" type="file" accept="image/*" class="flex-grow bg-black border border-gray-700 rounded-xl px-3 py-2 text-white">
+                        <button onclick="updateAvatar()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">교체</button>
+                    </div>
+                </div>
+                <div>
+                    <h4 class="text-sm font-bold text-gray-400 mb-3">배경 풍경 (테마)</h4>
+                    <div class="flex gap-2">
+                        <select id="theme-style-select" class="flex-grow bg-black border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-yellow-500 outline-none">
+                            <option value="dark">암천</option>
+                            <option value="gold">금룡</option>
+                            <option value="cyan">청룡</option>
+                        </select>
+                        <button onclick="updateThemeStyle()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">적용</button>
+                    </div>
+                 </div>
+                 <div>
+                     <h4 class="text-sm font-bold text-gray-400 mb-3">전갈 설정</h4>
+                     <div class="grid grid-cols-3 gap-2">
+                         <label class="flex items-center gap-2 text-xs bg-[#1C1C1E] border border-gray-800 rounded-xl px-3 py-2">
+                             <input id="noti-comment" type="checkbox" class="accent-yellow-500">
+                             <span class="text-gray-300">전서 전갈</span>
+                         </label>
+                         <label class="flex items-center gap-2 text-xs bg-[#1C1C1E] border border-gray-800 rounded-xl px-3 py-2">
+                             <input id="noti-like" type="checkbox" class="accent-yellow-500">
+                             <span class="text-gray-300">명성 전갈</span>
+                         </label>
+                         <label class="flex items-center gap-2 text-xs bg-[#1C1C1E] border border-gray-800 rounded-xl px-3 py-2">
+                             <input id="noti-message" type="checkbox" class="accent-yellow-500">
+                             <span class="text-gray-300">밀서 전갈</span>
+                         </label>
+                     </div>
+                     <div class="mt-2">
+                        <button onclick="updateNotificationSettings()" class="w-full bg-gray-800 text-white py-3 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">설정 기록</button>
+                    </div>
+                 </div>
+                <div>
+                    <h4 class="text-sm font-bold text-gray-400 mb-3">호(닉네임) 개명</h4>
+                    <div class="flex gap-2">
+                        <input id="edit-nickname" type="text" class="flex-grow bg-black border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-yellow-500 outline-none" placeholder="새로운 호">
+                        <button onclick="updateNickname()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">개명</button>
+                    </div>
+                </div>
+                 <div>
+                     <h4 class="text-sm font-bold text-gray-400 mb-3">문양(배지) 양식</h4>
+                     <div class="flex gap-2">
+                         <select id="badge-style-select" class="flex-grow bg-black border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-yellow-500 outline-none">
+                             <option value="auto">자동 (내공 기반)</option>
+                             <option value="gold">금룡 (금색)</option>
+                             <option value="cyan">청룡 (청색)</option>
+                             <option value="gray">무색 (중립)</option>
+                         </select>
+                         <button onclick="updateBadgeStyle()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">기록</button>
+                    </div>
+                </div>
+                <div>
+                    <h4 class="text-sm font-bold text-gray-400 mb-3">문양(배지) 형태</h4>
+                    <div class="flex gap-2">
+                        <select id="badge-icon-select" class="flex-grow bg-black border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-yellow-500 outline-none">
+                            <option value="">없음</option>
+                            <option value="dragon">용(🐉)</option>
+                            <option value="star">성(⭐)</option>
+                            <option value="sword">검(⚔️)</option>
+                        </select>
+                        <button onclick="updateBadgeIcon()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">기록</button>
+                    </div>
+                 </div>
+                
+                <div>
+                    <h4 class="text-sm font-bold text-gray-400 mb-3">암호 재설정</h4>
+                    <input id="edit-pw" type="password" class="w-full bg-black border border-gray-700 rounded-xl px-4 py-3 text-white mb-2 focus:border-yellow-500 outline-none" placeholder="새 암호 (6자 이상)">
+                    <button onclick="updatePassword()" class="w-full bg-gray-800 text-white py-3 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">암호 재설정</button>
+                </div>
+
+                <div class="pt-6 border-t border-gray-800">
+                    <button onclick="logout()" class="w-full py-3 text-red-400 font-bold hover:text-red-300 text-sm border border-red-900/30 rounded-xl bg-red-900/10 mb-3">하산하기 (떠나기)</button>
+                    <p class="text-[10px] text-gray-600 text-center">강호를 잠시 떠나시겠소? 언제든 다시 돌아올 수 있소.</p>
+                </div>
+            </div>
         </div>
     </main>
     
+    <nav class="flex-none z-40 glass glass-border bg-[#1C1C1E] pb-safe">
+        <div class="flex justify-around max-w-md mx-auto">
+            <button onclick="navigate('gangho-plaza')" class="nav-btn flex-1 py-3 text-sm font-medium active">광장</button>
+            <button onclick="navigate('stock-board')" class="nav-btn flex-1 py-3 text-sm font-medium">비급</button>
+            <button onclick="navigate('chat-hall')" class="nav-btn flex-1 py-3 text-sm font-medium">전음</button>
+            <button onclick="navigate('secret-inn')" class="nav-btn flex-1 py-3 text-sm font-medium">객잔</button>
+            <button onclick="navigate('my-page')" id="nav-my-page" class="hidden nav-btn flex-1 py-3 text-sm font-medium">본거지</button>
+        </div>
+    </nav>
+    
     <!-- Floating Action Button -->
-    <button onclick="tryOpenWriteModal(getCurrentViewType())" class="fixed bottom-8 right-6 w-14 h-14 bg-yellow-500 text-black rounded-full shadow-2xl flex items-center justify-center text-3xl font-light hover:scale-105 transition-transform z-50">
+    <button id="fab-write-btn" onclick="tryOpenWriteModal(getCurrentViewType())" class="fixed bottom-20 right-6 w-14 h-14 bg-yellow-500 text-black rounded-full shadow-2xl flex items-center justify-center text-3xl font-light hover:scale-105 transition-transform z-50">
         <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
     </button>
     
@@ -93,7 +273,7 @@
     <!-- Write Modal -->
     <div id="newPostModal" class="hidden fixed inset-0 bg-black z-[60] flex flex-col animate-slide-up">
         <div class="flex items-center justify-between px-4 py-3 bg-[#1C1C1E]/90 backdrop-blur-md border-b border-gray-800 sticky top-0 z-10">
-            <button onclick="closeModal('newPostModal')" class="text-gray-400 text-base font-medium hover:text-white">취소</button>
+            <button onclick="closeModal('newPostModal')" class="text-gray-400 text-base font-medium hover:text-white">철회</button>
             <span class="font-bold text-white text-base">새로운 비급</span>
             <button onclick="savePost()" class="text-yellow-500 font-bold text-base hover:text-yellow-400 disabled:opacity-50" id="save-post-btn">등록</button>
         </div>
@@ -122,15 +302,15 @@
             </div>
             <div id="mu-gong-area" class="px-4 py-3 bg-[#1C1C1E]">
                 <select id="mu-gong-select" class="w-full bg-transparent text-white text-base py-1 focus:ring-0 cursor-pointer appearance-none">
-                    <option value="" disabled selected>무공(말머리) 선택</option>
+                    <option value="" disabled selected>무공(말머리) 선택하시오</option>
                 </select>
             </div>
 
             <div class="px-4 py-3">
-                <input id="new-post-title" type="text" placeholder="제목" oninput="autoSavePost()" class="w-full bg-transparent border-none text-white text-2xl font-bold placeholder-gray-600 focus:outline-none py-2">
+                <input id="new-post-title" type="text" placeholder="제목을 적으시오" oninput="autoSavePost()" class="w-full bg-transparent border-none text-white text-2xl font-bold placeholder-gray-600 focus:outline-none py-2">
             </div>
 
-            <div id="new-post-content" contenteditable="true" placeholder="무림의 지혜를 나누어 주십시오..." oninput="autoSavePost()" class="flex-grow px-4 py-2 text-lg text-gray-200 focus:outline-none pb-20 leading-relaxed"></div>
+            <div id="new-post-content" contenteditable="true" placeholder="무림의 지혜를 나누어 주시오..." oninput="autoSavePost()" class="flex-grow px-4 py-2 text-lg text-gray-200 focus:outline-none pb-20 leading-relaxed"></div>
         </div>
 
         <div class="editor-toolbar flex items-center justify-between px-4 py-3 bg-[#1C1C1E] border-t border-gray-800 safe-area-bottom">
@@ -139,29 +319,29 @@
                 <label for="image-upload-input" class="text-gray-400 hover:text-white cursor-pointer"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg></label>
                 <input type="file" id="image-upload-input" accept="image/*" class="hidden" onchange="handleImageUpload()">
             </div>
-            <span id="autosave-indicator" class="text-xs text-green-500 opacity-0 transition-opacity">저장됨</span>
+            <span id="autosave-indicator" class="text-xs text-green-500 opacity-0 transition-opacity">기록됨</span>
         </div>
     </div>
     
     <!-- Message Modal (New Feature) -->
     <div id="messageModal" class="hidden fixed inset-0 z-[70] flex flex-col animate-slide-up bg-black/95 backdrop-blur-xl">
         <div class="flex items-center justify-between px-4 py-3 border-b border-gray-800 bg-[#1C1C1E]">
-            <span class="text-lg font-bold text-white">쪽지함</span>
+            <span class="text-lg font-bold text-white">밀서함</span>
             <button onclick="closeModal('messageModal')" class="w-8 h-8 flex items-center justify-center bg-gray-800 rounded-full text-gray-400">✕</button>
         </div>
         <div class="flex-grow overflow-y-auto">
             <div id="message-list" class="p-4 space-y-3">
                 <!-- Messages will be injected here -->
-                <div class="text-center text-gray-500 mt-10">불러오는 중...</div>
+                <div class="text-center text-gray-500 mt-10">전갈을 불러오는 중이오...</div>
             </div>
         </div>
         <div id="message-compose-area" class="hidden p-4 border-t border-gray-800 bg-[#1C1C1E]">
             <div class="flex flex-col gap-2">
-                <div class="text-xs text-gray-400">받는 사람: <span id="msg-receiver-name" class="text-white font-bold"></span></div>
-                <textarea id="msg-content" class="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white text-sm focus:outline-none focus:border-yellow-500 resize-none h-24" placeholder="내용을 입력하세요..."></textarea>
+                <div class="text-xs text-gray-400">수신인: <span id="msg-receiver-name" class="text-white font-bold"></span></div>
+                <textarea id="msg-content" class="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white text-sm focus:outline-none focus:border-yellow-500 resize-none h-24" placeholder="내용을 적으시오..."></textarea>
                 <div class="flex justify-end gap-2">
-                    <button onclick="cancelMessage()" class="px-4 py-2 bg-gray-800 rounded-lg text-sm text-gray-300">취소</button>
-                    <button onclick="submitMessage()" class="px-4 py-2 bg-yellow-600 rounded-lg text-sm text-black font-bold">보내기</button>
+                    <button onclick="cancelMessage()" class="px-4 py-2 bg-gray-800 rounded-lg text-sm text-gray-300">철회</button>
+                    <button onclick="submitMessage()" class="px-4 py-2 bg-yellow-600 rounded-lg text-sm text-black font-bold">전송</button>
                 </div>
             </div>
         </div>
@@ -194,10 +374,10 @@
                     </div>
                     <div class="flex gap-2">
                         <!-- Message Button Injected dynamically if logged in -->
-                        <button id="btn-send-msg" class="hidden text-xs bg-gray-800 text-gray-300 px-3 py-1.5 rounded-full hover:bg-gray-700">쪽지보내기</button>
-                        <button onclick="openReportModal('post', state.currentPostId)" class="text-xs text-gray-500 hover:text-red-400 px-2">🚨 신고</button>
-                        <button id="edit-post-btn" class="hidden text-xs text-blue-400 font-bold px-2">수정</button>
-                        <button id="delete-post-btn" class="hidden text-xs text-red-500 font-bold px-2">삭제</button>
+                        <button id="btn-send-msg" class="hidden text-xs bg-gray-800 text-gray-300 px-3 py-1.5 rounded-full hover:bg-gray-700">밀서 보내기</button>
+                        <button onclick="openReportModal('post', state.currentPostId)" class="text-xs text-gray-500 hover:text-red-400 px-2">🚨 관아 신고</button>
+                        <button id="edit-post-btn" class="hidden text-xs text-blue-400 font-bold px-2">교정</button>
+                        <button id="delete-post-btn" class="hidden text-xs text-red-500 font-bold px-2">파기</button>
                     </div>
                 </div>
             </div>
@@ -205,7 +385,7 @@
             <div class="p-3 bg-[#1C1C1E] border-t border-gray-800">
                 <div id="comments-list" class="max-h-48 overflow-y-auto mb-3 space-y-3 scroll-hidden"></div>
                 <div class="relative">
-                    <input id="comment-input" type="text" placeholder="댓글을 남겨주세요..." onkeydown="if(event.key==='Enter') addComment()" class="w-full bg-gray-900 border border-gray-700 rounded-full px-4 py-3 text-sm text-white pr-12 focus:border-gray-500 focus:outline-none transition">
+                    <input id="comment-input" type="text" placeholder="전서(댓글)를 남기시오..." onkeydown="if(event.key==='Enter') addComment()" class="w-full bg-gray-900 border border-gray-700 rounded-full px-4 py-3 text-sm text-white pr-12 focus:border-gray-500 focus:outline-none transition">
                     <button onclick="addComment()" class="absolute right-2 top-1/2 transform -translate-y-1/2 bg-gray-700 text-white p-1.5 rounded-full hover:bg-gray-600">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                     </button>
@@ -221,21 +401,21 @@
             
             <!-- Tab Headers -->
             <div class="flex border-b border-gray-700 mb-6">
-                <button id="tab-login" onclick="switchAuthTab('login')" class="flex-1 pb-3 text-sm font-bold text-white border-b-2 border-white transition">로그인</button>
-                <button id="tab-signup" onclick="switchAuthTab('signup')" class="flex-1 pb-3 text-sm font-bold text-gray-500 border-b-2 border-transparent transition hover:text-gray-300">회원가입</button>
+                <button id="tab-login" onclick="switchAuthTab('login')" class="flex-1 pb-3 text-sm font-bold text-white border-b-2 border-white transition">입문(로그인)</button>
+                <button id="tab-signup" onclick="switchAuthTab('signup')" class="flex-1 pb-3 text-sm font-bold text-gray-500 border-b-2 border-transparent transition hover:text-gray-300">문파등록</button>
             </div>
 
             <!-- Common Inputs -->
-            <input id="auth-email" type="email" placeholder="이메일" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-3 text-base focus:border-yellow-500 outline-none">
-            <input id="auth-password" type="password" placeholder="비밀번호" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-2 text-base focus:border-yellow-500 outline-none">
+            <input id="auth-email" type="email" placeholder="서신 주소 (이메일)" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-3 text-base focus:border-yellow-500 outline-none">
+            <input id="auth-password" type="password" placeholder="비급 봉인 (암호)" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-2 text-base focus:border-yellow-500 outline-none">
             
             <div id="login-extras" class="flex justify-end mb-4">
-                <button onclick="openModal('forgotPasswordModal')" class="text-xs text-gray-400 hover:text-white">비밀번호를 잊으셨나요?</button>
+                <button onclick="openModal('forgotPasswordModal')" class="text-xs text-gray-400 hover:text-white">암호를 잊으셨소?</button>
             </div>
             
             <!-- Signup Only Inputs -->
             <div id="signup-fields" class="hidden">
-                <input id="auth-password-confirm" type="password" placeholder="비밀번호 확인" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-4 text-base focus:border-yellow-500 outline-none">
+                <input id="auth-password-confirm" type="password" placeholder="봉인 확인" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-4 text-base focus:border-yellow-500 outline-none">
                 
                 <div class="flex items-center mb-6 px-1">
                     <input type="checkbox" id="term-agree-chk" class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
@@ -247,7 +427,7 @@
             </div>
 
             <!-- Action Button -->
-            <button id="auth-submit-btn" onclick="submitAuth()" class="w-full py-3.5 text-sm bg-white text-black rounded-xl font-bold hover:bg-gray-200 transition mb-4">로그인</button>
+            <button id="auth-submit-btn" onclick="submitAuth()" class="w-full py-3.5 text-sm bg-white text-black rounded-xl font-bold hover:bg-gray-200 transition mb-4">입문</button>
             
             <button onclick="closeModal('authModal')" class="w-full text-center text-xs text-gray-500 hover:text-white">닫기</button>
         </div>
@@ -263,7 +443,7 @@
             <h3 class="text-lg font-bold text-red-500 mb-2">삭제 확인</h3>
             <p class="text-sm text-gray-400 mb-5">정말로 이 비급을 태우시겠습니까?</p>
             <div class="flex gap-3 justify-center">
-                <button onclick="closeModal('deleteConfirmModal')" class="px-4 py-2 text-sm bg-gray-800 rounded-lg text-gray-300">취소</button>
+                <button onclick="closeModal('deleteConfirmModal')" class="px-4 py-2 text-sm bg-gray-800 rounded-lg text-gray-300">철회</button>
                 <button onclick="deletePost(state.currentPostId)" class="px-4 py-2 text-sm bg-red-600 rounded-lg text-white font-bold">삭제</button>
             </div>
         </div>
@@ -271,11 +451,11 @@
     <!-- Forgot Password Modal -->
     <div id="forgotPasswordModal" class="hidden fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-[#1C1C1E] w-full max-w-sm p-8 rounded-3xl shadow-2xl border border-gray-800">
-            <h3 class="text-xl font-bold text-white mb-4 text-center">비밀번호 찾기</h3>
-            <p class="text-xs text-gray-400 mb-6 text-center">가입한 이메일 주소를 입력하시면 비밀번호 재설정 링크를 보내드립니다.</p>
-            <input id="reset-email" type="email" placeholder="이메일 주소" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-4 text-base focus:border-yellow-500 outline-none">
+            <h3 class="text-xl font-bold text-white mb-4 text-center">암호 찾기</h3>
+            <p class="text-xs text-gray-400 mb-6 text-center">가입한 서신 주소(이메일)를 대면 암호 재설정 서신을 보내드리리다.</p>
+            <input id="reset-email" type="email" placeholder="서신 주소 (이메일)" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-4 text-base focus:border-yellow-500 outline-none">
             <button onclick="sendPasswordReset()" class="w-full py-3.5 text-sm bg-yellow-600 text-white rounded-xl font-bold hover:bg-yellow-500 transition mb-3">전송하기</button>
-            <button onclick="closeModal('forgotPasswordModal')" class="w-full text-center text-xs text-gray-500 hover:text-white">취소</button>
+            <button onclick="closeModal('forgotPasswordModal')" class="w-full text-center text-xs text-gray-500 hover:text-white">철회</button>
         </div>
     </div>
 
@@ -283,10 +463,10 @@
     <div id="youtubeEmbedModal" class="hidden fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-[#1C1C1E] w-full max-w-sm p-6 rounded-3xl shadow-2xl border border-gray-800">
             <h3 class="text-lg font-bold text-white mb-4">YouTube 영상 첨부</h3>
-            <input id="youtube-url-input" type="text" placeholder="YouTube URL 붙여넣기" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-4 text-sm focus:border-red-500 outline-none">
+            <input id="youtube-url-input" type="text" placeholder="기록 영상(YouTube) 주소를 붙여넣으시오" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-4 text-sm focus:border-red-500 outline-none">
             <div class="flex gap-2">
-                <button onclick="closeModal('youtubeEmbedModal')" class="flex-1 py-3 text-sm bg-gray-800 text-gray-300 rounded-xl font-bold">취소</button>
-                <button onclick="handleYouTubeEmbedFromModal()" class="flex-1 py-3 text-sm bg-red-600 text-white rounded-xl font-bold">첨부하기</button>
+                <button onclick="closeModal('youtubeEmbedModal')" class="flex-1 py-3 text-sm bg-gray-800 text-gray-300 rounded-xl font-bold">철회</button>
+                <button onclick="handleYouTubeEmbedFromModal()" class="flex-1 py-3 text-sm bg-red-600 text-white rounded-xl font-bold">첨부</button>
             </div>
         </div>
     </div>
@@ -294,11 +474,11 @@
     <!-- Change Password Modal (For Recovery) -->
     <div id="changePasswordModal" class="hidden fixed inset-0 bg-black/60 z-[80] flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-[#1C1C1E] w-full max-w-sm p-6 rounded-3xl shadow-2xl border border-gray-800">
-            <h3 class="text-lg font-bold text-white mb-2">비밀번호 변경</h3>
-            <p class="text-xs text-gray-400 mb-4">새로운 비밀번호를 입력해주세요.</p>
-            <input type="password" id="new-password" placeholder="새 비밀번호 (6자 이상)" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-3 text-sm focus:border-green-500 outline-none">
-            <input type="password" id="confirm-new-password" placeholder="비밀번호 확인" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-4 text-sm focus:border-green-500 outline-none">
-            <button onclick="submitChangePassword()" class="w-full py-3 text-sm bg-green-600 text-white rounded-xl font-bold hover:bg-green-500 transition shadow-lg shadow-green-900/20">비밀번호 변경</button>
+            <h3 class="text-lg font-bold text-white mb-2">암호 변경</h3>
+            <p class="text-xs text-gray-400 mb-4">새로운 암호를 대시오.</p>
+            <input type="password" id="new-password" placeholder="새 암호 (6자 이상)" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-3 text-sm focus:border-green-500 outline-none">
+            <input type="password" id="confirm-new-password" placeholder="봉인 확인" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-4 text-sm focus:border-green-500 outline-none">
+            <button onclick="submitChangePassword()" class="w-full py-3 text-sm bg-green-600 text-white rounded-xl font-bold hover:bg-green-500 transition shadow-lg shadow-green-900/20">암호 변경</button>
         </div>
     </div>
 
@@ -310,14 +490,14 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
             </div>
-            <h3 class="text-xl font-bold text-white mb-2">이메일 인증 확인</h3>
+            <h3 class="text-xl font-bold text-white mb-2">서신(이메일) 확인</h3>
             <p class="text-sm text-gray-300 mb-6 leading-relaxed">
-                가입하신 이메일로<br>
-                <span class="text-yellow-500 font-bold">인증 링크</span>가 발송되었습니다.<br><br>
-                메일함을 확인하여 링크를 클릭하시면<br>
-                입문 절차가 완료됩니다.
+                가입하신 서신 주소로<br>
+                <span class="text-yellow-500 font-bold">입문 허가증</span>이 발송되었소.<br><br>
+                서신을 확인하여 허가증을 제시(클릭)하면<br>
+                입문 절차가 완료되오.
             </p>
-            <button onclick="closeModal('emailVerificationModal')" class="w-full py-3.5 text-sm bg-yellow-600 text-white rounded-xl font-bold hover:bg-yellow-500 transition shadow-lg shadow-yellow-900/20">확인했습니다</button>
+            <button onclick="closeModal('emailVerificationModal')" class="w-full py-3.5 text-sm bg-yellow-600 text-white rounded-xl font-bold hover:bg-yellow-500 transition shadow-lg shadow-yellow-900/20">확인했소</button>
         </div>
     </div>
 
@@ -336,17 +516,17 @@
     <div id="reportModal" class="hidden fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-[#1C1C1E] w-full max-w-sm p-6 rounded-3xl shadow-2xl border border-gray-800">
             <h3 class="text-lg font-bold text-white mb-2">신고하기</h3>
-            <p class="text-xs text-gray-400 mb-4">건전한 강호 문화를 위해 협조 부탁드립니다.</p>
+            <p class="text-xs text-gray-400 mb-4">건전한 강호를 위해 협조 부탁하오.</p>
             
             <select id="report-reason" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-3 text-sm focus:border-red-500 outline-none">
-                <option value="spam">스팸 / 홍보성 도배</option>
-                <option value="abuse">욕설 / 비하 발언</option>
-                <option value="adult">음란물 / 부적절한 콘텐츠</option>
-                <option value="fraud">사기 / 허위 사실 유포</option>
+                <option value="spam">광고 / 도배 행위</option>
+                <option value="abuse">욕설 / 비하</option>
+                <option value="adult">음란 / 부적절한 내용</option>
+                <option value="fraud">사기 / 거짓 정보</option>
                 <option value="other">기타</option>
             </select>
             
-            <textarea id="report-details" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-4 text-sm focus:border-red-500 outline-none h-24 resize-none" placeholder="상세 내용을 입력해주세요 (선택사항)"></textarea>
+            <textarea id="report-details" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-4 text-sm focus:border-red-500 outline-none h-24 resize-none" placeholder="상세 내용을 적으시오 (선택사항)"></textarea>
             
             <div class="flex gap-2">
                 <button onclick="closeModal('reportModal')" class="flex-1 py-3 text-sm bg-gray-800 text-gray-300 rounded-xl font-bold">취소</button>
@@ -359,15 +539,15 @@
     <div id="notificationModal" class="hidden fixed inset-0 bg-black/60 z-[60] flex justify-end">
         <div class="bg-[#1C1C1E] w-full max-w-xs h-full shadow-2xl border-l border-gray-800 animate-slide-left flex flex-col">
             <div class="p-4 border-b border-gray-800 flex justify-between items-center bg-[#1C1C1E]">
-                <h3 class="text-lg font-bold text-white">알림</h3>
+                <h3 class="text-lg font-bold text-white">전갈</h3>
                 <button onclick="closeModal('notificationModal')" class="text-gray-400 hover:text-white">✕</button>
             </div>
             <div id="notification-list" class="flex-grow overflow-y-auto p-2 space-y-2">
                 <!-- Notifications injected here -->
-                <div class="text-center text-gray-500 mt-10 text-sm">알림을 불러오는 중...</div>
+                <div class="text-center text-gray-500 mt-10 text-sm">전갈을 불러오는 중...</div>
             </div>
             <div class="p-3 border-t border-gray-800">
-                <button onclick="markAllNotificationsRead()" class="w-full py-2 text-sm bg-gray-800 text-gray-300 rounded-lg hover:bg-gray-700">모두 읽음 처리</button>
+                <button onclick="markAllNotificationsRead()" class="w-full py-2 text-sm bg-gray-800 text-gray-300 rounded-lg hover:bg-gray-700">모두 확인</button>
             </div>
         </div>
     </div>
