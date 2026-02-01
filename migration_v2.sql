@@ -8,6 +8,9 @@ begin
   if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'role') then
     alter table public.profiles add column role text default 'user';
   end if;
+  if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'is_banned') then
+    alter table public.profiles add column is_banned boolean default false;
+  end if;
 end $$;
 
 -- 1. 좋아요 시스템 (DB 기반)
@@ -103,6 +106,11 @@ drop policy if exists "Users can create reports" on public.reports;
 create policy "Users can create reports"
   on reports for insert
   with check ( auth.role() = 'authenticated' );
+  
+drop policy if exists "Admins can update reports" on public.reports;
+create policy "Admins can update reports"
+  on reports for update
+  using ( auth.uid() in (select id from public.profiles where role = 'admin') );
 
 
 -- 3. 알림 시스템
@@ -126,6 +134,11 @@ drop policy if exists "Users can update own notifications" on public.notificatio
 create policy "Users can update own notifications"
   on notifications for update
   using ( auth.uid() = user_id );
+  
+drop policy if exists "Admins can insert notifications" on public.notifications;
+create policy "Admins can insert notifications"
+  on notifications for insert
+  with check ( auth.uid() in (select id from public.profiles where role = 'admin') );
 
 -- 알림 트리거 (댓글 작성 시 게시글 작성자에게 알림)
 create or replace function public.handle_new_comment()
@@ -150,6 +163,22 @@ drop trigger if exists on_comment_created on public.comments;
 create trigger on_comment_created
   after insert on public.comments
   for each row execute procedure public.handle_new_comment();
+  
+-- 관리자 권한: 프로필 업데이트, 글/댓글 삭제
+drop policy if exists "Admins can update profiles" on public.profiles;
+create policy "Admins can update profiles"
+  on public.profiles for update
+  using ( auth.uid() in (select id from public.profiles where role = 'admin') );
+
+drop policy if exists "Admins can delete any post" on public.posts;
+create policy "Admins can delete any post"
+  on public.posts for delete
+  using ( auth.uid() in (select id from public.profiles where role = 'admin') );
+
+drop policy if exists "Admins can delete any comment" on public.comments;
+create policy "Admins can delete any comment"
+  on public.comments for delete
+  using ( auth.uid() in (select id from public.profiles where role = 'admin') );
 
 create or replace function public.handle_new_like()
 returns trigger as $$

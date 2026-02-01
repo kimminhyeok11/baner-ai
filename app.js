@@ -238,6 +238,11 @@ async function updateAuthState(session) {
         const navBtn = document.getElementById('nav-my-page');
         if (navBtn) navBtn.classList.add('hidden');
     }
+    const adminBtn = document.getElementById('admin-btn');
+    if (adminBtn) {
+        if (state.profile?.role === 'admin') adminBtn.classList.remove('hidden');
+        else adminBtn.classList.add('hidden');
+    }
     updateHeaderUI();
 }
 
@@ -389,6 +394,7 @@ function checkAndLoadTempPost() {
 async function savePost() {
     const type = document.querySelector('input[name="post-type"]:checked').value;
     if (type !== 'secret' && !state.user) return showToast('입문 후 이용 가능하오.', 'error');
+    if (state.user && state.profile?.is_banned) return showToast('관문 출입 금지 상태이오.', 'error');
 
     const title = document.getElementById('new-post-title').value;
     const contentHTML = document.getElementById('new-post-content').innerHTML.trim();
@@ -464,7 +470,11 @@ window.deletePost = async function(postId) {
     closeModal('deleteConfirmModal');
     if (!postId || !state.user) return;
     
-    const { error } = await client.from('posts').delete().eq('id', postId).eq('user_id', state.user.id);
+    let query = client.from('posts').delete().eq('id', postId);
+    if (state.profile?.role !== 'admin') {
+        query = query.eq('user_id', state.user.id);
+    }
+    const { error } = await query;
     
     if (error) {
         showToast('파기 권한이 없거나 문제가 생겼소.', 'error');
@@ -1163,8 +1173,11 @@ window.openPostDetail = async function(post) {
     }
     
     const isAuthor = state.user?.id === post.user_id;
-    document.getElementById('delete-post-btn').classList.toggle('hidden', !isAuthor);
-    document.getElementById('edit-post-btn').classList.toggle('hidden', !isAuthor);
+    const isAdmin = state.profile?.role === 'admin';
+    const canEdit = isAuthor || isAdmin;
+    const canDelete = isAuthor || isAdmin;
+    document.getElementById('delete-post-btn').classList.toggle('hidden', !canDelete);
+    document.getElementById('edit-post-btn').classList.toggle('hidden', !canEdit);
     
     // 쪽지 보내기 버튼 로직
     const msgBtn = document.getElementById('btn-send-msg');
@@ -1287,7 +1300,13 @@ function createCommentNode(comment, allChildren, depth = 0) {
             <span>${new Date(comment.created_at).toLocaleTimeString()}</span>
         </p>
         <p class="text-xs text-gray-200">${comment.content}</p>
-        <button onclick="setReplyTarget('${comment.id}', '${author}')" class="text-[10px] text-gray-500 hover:text-gray-300 mt-1">↪ 답글</button>
+        <div class="flex items-center gap-2 mt-1">
+            <button onclick="setReplyTarget('${comment.id}', '${author}')" class="text-[10px] text-gray-500 hover:text-gray-300">↪ 답글</button>
+            ${(state.profile?.role === 'admin' || (state.user && state.user.id === comment.user_id)) ? 
+                `<button onclick="deleteComment('${comment.id}','${comment.user_id}')" class="text-[10px] text-red-500 hover:text-red-400">파기</button>` 
+                : ''
+            }
+        </div>
     `;
     wrapper.appendChild(commentEl);
 
@@ -1325,6 +1344,7 @@ async function addComment() {
     const input = document.getElementById('comment-input');
     const content = input.value.trim();
     if (!content || !postId) return;
+    if (state.user && state.profile?.is_banned) return showToast('관문 출입 금지 상태이오.', 'error');
 
     if (!state.user) {
         const today = new Date().toISOString().split('T')[0];
@@ -1361,6 +1381,16 @@ async function addComment() {
         const cancelBtn = document.getElementById('cancel-reply-btn');
         if(cancelBtn) cancelBtn.remove();
     }
+}
+
+window.deleteComment = async function(commentId, userId) {
+    if (!state.user) return;
+    const isAdmin = state.profile?.role === 'admin';
+    const isAuthor = state.user.id === userId;
+    if (!isAdmin && !isAuthor) return showToast('파기 권한이 없소.', 'error');
+    const { error } = await client.from('comments').delete().eq('id', commentId);
+    if (error) showToast('파기 중 문제가 생겼소.', 'error');
+    else showToast('전서를 파기했소.', 'success');
 }
 
 function setupRealtimeComments(postId) {
@@ -2009,4 +2039,129 @@ function setupRealtimeNotifications() {
     state.realtimeChannels['notifications'] = channel;
 }
 
+async function fetchReports() {
+    const { data, error } = await client.from('reports').select('*').order('created_at', { ascending: false });
+    if (error) return [];
+    return data || [];
+}
+
+window.openAdminModal = async function() {
+    if (!state.user || state.profile?.role !== 'admin') {
+        return showToast('방장 전용이오.', 'error');
+    }
+    openModal('adminModal');
+    switchAdminTab('reports');
+}
+
+window.updateReportStatus = async function(id, status) {
+    if (!state.user || state.profile?.role !== 'admin') return;
+    const { error } = await client.from('reports').update({ status }).eq('id', id);
+    if (error) {
+        showToast('처리 중 문제가 생겼소.', 'error');
+    } else {
+        showToast('처리되었소.', 'success');
+        loadAdminReports();
+    }
+}
+
+window.switchAdminTab = function(tab) {
+    document.getElementById('admin-reports-area').classList.add('hidden');
+    document.getElementById('admin-users-area').classList.add('hidden');
+    document.getElementById('admin-broadcast-area').classList.add('hidden');
+    document.getElementById('admin-tab-reports').classList.remove('bg-yellow-700','text-black');
+    document.getElementById('admin-tab-users').classList.remove('bg-yellow-700','text-black');
+    document.getElementById('admin-tab-broadcast').classList.remove('bg-yellow-700','text-black');
+    if (tab === 'reports') {
+        document.getElementById('admin-reports-area').classList.remove('hidden');
+        document.getElementById('admin-tab-reports').classList.add('bg-yellow-700','text-black');
+        loadAdminReports();
+    } else if (tab === 'users') {
+        document.getElementById('admin-users-area').classList.remove('hidden');
+        document.getElementById('admin-tab-users').classList.add('bg-yellow-700','text-black');
+        loadAdminUsers();
+    } else if (tab === 'broadcast') {
+        document.getElementById('admin-broadcast-area').classList.remove('hidden');
+        document.getElementById('admin-tab-broadcast').classList.add('bg-yellow-700','text-black');
+    }
+}
+
+async function loadAdminReports() {
+    const filter = document.getElementById('reports-filter')?.value || 'all';
+    const list = document.getElementById('admin-reports-list');
+    list.innerHTML = '<div class="text-center text-gray-500 mt-4 text-xs">고발 기록을 불러오는 중...</div>';
+    let q = client.from('reports').select('*').order('created_at', { ascending: false });
+    if (filter !== 'all') q = q.eq('status', filter);
+    const { data, error } = await q;
+    if (error) {
+        list.innerHTML = '<div class="text-center text-gray-500 mt-6 text-xs">불러오기에 차질이 생겼소.</div>';
+        return;
+    }
+    const reports = data || [];
+    if (!reports.length) {
+        list.innerHTML = '<div class="text-center text-gray-500 mt-6 text-xs">접수된 고발이 없소.</div>';
+        return;
+    }
+    list.innerHTML = reports.map(r => `
+        <div class="p-3 rounded-lg border border-gray-800 bg-gray-900/40">
+            <div class="text-xs text-gray-400 mb-1">${new Date(r.created_at).toLocaleString()} · 상태: ${r.status}</div>
+            <div class="text-sm text-white mb-2">[${r.target_type}] ${r.reason}</div>
+            <div class="flex gap-2">
+                <button onclick="updateReportStatus('${r.id}','resolved')" class="px-2 py-1 text-xs bg-green-700 text-white rounded">처리</button>
+                <button onclick="updateReportStatus('${r.id}','dismissed')" class="px-2 py-1 text-xs bg-gray-700 text-white rounded">기각</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function loadAdminUsers() {
+    const q = document.getElementById('admin-user-q').value.trim();
+    let query = client.from('profiles').select('id,nickname,role,is_banned').order('created_at', { ascending: false }).limit(50);
+    if (q) query = query.ilike('nickname', `%${q}%`);
+    const { data, error } = await query;
+    const list = document.getElementById('admin-users-list');
+    if (error) {
+        list.innerHTML = '<div class="text-center text-gray-500 mt-6 text-xs">불러오기에 차질이 생겼소.</div>';
+        return;
+    }
+    const users = data || [];
+    if (!users.length) {
+        list.innerHTML = '<div class="text-center text-gray-500 mt-6 text-xs">검색 결과가 없소.</div>';
+        return;
+    }
+    list.innerHTML = users.map(u => `
+        <div class="p-3 rounded-lg border border-gray-800 bg-gray-900/40 flex items-center justify-between">
+            <div>
+                <div class="text-sm text-white">${u.nickname || '익명의 협객'}</div>
+                <div class="text-[11px] text-gray-500">권한: ${u.role || 'user'} · 금지: ${u.is_banned ? '예' : '아니오'}</div>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="updateUserRole('${u.id}','admin')" class="px-2 py-1 text-xs bg-yellow-700 text-black rounded">방장 승격</button>
+                <button onclick="updateUserRole('${u.id}','user')" class="px-2 py-1 text-xs bg-gray-700 text-white rounded">문도 강등</button>
+                <button onclick="toggleBan('${u.id}', ${u.is_banned ? 'false' : 'true'})" class="px-2 py-1 text-xs ${u.is_banned ? 'bg-green-700' : 'bg-red-700'} text-white rounded">${u.is_banned ? '해제' : '금지'}</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+window.updateUserRole = async function(userId, role) {
+    const { error } = await client.from('profiles').update({ role }).eq('id', userId);
+    if (error) showToast('권한 변경에 차질이 생겼소.', 'error');
+    else { showToast('권한이 변경되었소.', 'success'); loadAdminUsers(); }
+}
+
+window.toggleBan = async function(userId, banned) {
+    const { error } = await client.from('profiles').update({ is_banned: banned }).eq('id', userId);
+    if (error) showToast('금지 설정에 차질이 생겼소.', 'error');
+    else { showToast(banned ? '관문 출입을 금했소.' : '금지를 해제했소.', 'success'); loadAdminUsers(); }
+}
+
+window.sendBroadcast = async function() {
+    const text = document.getElementById('broadcast-content').value.trim();
+    if (!text) return showToast('공지 내용을 적으시오.', 'error');
+    const { data: users } = await client.from('profiles').select('id');
+    const rows = (users || []).map(u => ({ user_id: u.id, type: 'broadcast', content: text, link: null }));
+    const { error } = await client.from('notifications').insert(rows);
+    if (error) showToast('공지 발송에 차질이 생겼소.', 'error');
+    else showToast('공지 발송을 마쳤소.', 'success');
+}
 document.addEventListener('DOMContentLoaded', init);

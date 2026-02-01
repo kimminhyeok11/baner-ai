@@ -35,6 +35,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
                     <span id="msg-badge" class="hidden absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-black"></span>
                 </button>
+                <button id="admin-btn" onclick="openAdminModal()" class="hidden text-xs bg-gray-800 text-yellow-400 px-2 py-1.5 rounded hover:bg-gray-700">관아</button>
                 <div id="auth-buttons"></div>
             </div>
         </div>
@@ -274,7 +275,7 @@
     <div id="newPostModal" class="hidden fixed inset-0 bg-black z-[60] flex flex-col animate-slide-up">
         <div class="flex items-center justify-between px-4 py-3 bg-[#1C1C1E]/90 backdrop-blur-md border-b border-gray-800 sticky top-0 z-10">
             <button onclick="closeModal('newPostModal')" class="text-gray-400 text-base font-medium hover:text-white">철회</button>
-            <span class="font-bold text-white text-base">새로운 비급</span>
+            <span id="post-modal-title" class="font-bold text-white text-base">새로운 비급</span>
             <button onclick="savePost()" class="text-yellow-500 font-bold text-base hover:text-yellow-400 disabled:opacity-50" id="save-post-btn">등록</button>
         </div>
 
@@ -552,5 +553,46 @@
         </div>
     </div>
 
+    <!-- Admin Modal -->
+    <div id="adminModal" class="hidden fixed inset-0 bg-black/60 z-[80] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-[#1C1C1E] w-full max-w-md h-[80vh] rounded-2xl border border-gray-800 flex flex-col">
+            <div class="p-4 border-b border-gray-800 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-white">관아(관리자)</h3>
+                <button onclick="closeModal('adminModal')" class="text-gray-400 hover:text-white">✕</button>
+            </div>
+            <div class="p-3 flex gap-2 border-b border-gray-800">
+                <button id="admin-tab-reports" onclick="switchAdminTab('reports')" class="px-3 py-1.5 text-xs bg-gray-800 text-gray-300 rounded-full border border-gray-700">신고</button>
+                <button id="admin-tab-users" onclick="switchAdminTab('users')" class="px-3 py-1.5 text-xs bg-gray-800 text-gray-300 rounded-full border border-gray-700">문도</button>
+                <button id="admin-tab-broadcast" onclick="switchAdminTab('broadcast')" class="px-3 py-1.5 text-xs bg-gray-800 text-gray-300 rounded-full border border-gray-700">공지</button>
+            </div>
+            <div class="flex-grow overflow-y-auto p-3 space-y-2">
+                <div id="admin-reports-area" class="space-y-2">
+                    <div class="flex items-center gap-2 mb-2">
+                        <select id="reports-filter" class="bg-black border border-gray-700 text-white text-xs rounded px-2 py-1">
+                            <option value="all">전체</option>
+                            <option value="pending">미처리</option>
+                            <option value="resolved">처리</option>
+                            <option value="dismissed">기각</option>
+                        </select>
+                        <button onclick="loadAdminReports()" class="text-xs px-2 py-1 bg-gray-800 text-gray-300 rounded">새로고침</button>
+                    </div>
+                    <div id="admin-reports-list" class="space-y-2"></div>
+                </div>
+                <div id="admin-users-area" class="hidden space-y-2">
+                    <div class="flex items-center gap-2 mb-2">
+                        <input id="admin-user-q" type="text" placeholder="문도 검색(별칭)" class="flex-1 bg-black border border-gray-700 text-white text-xs rounded px-2 py-1">
+                        <button onclick="loadAdminUsers()" class="text-xs px-2 py-1 bg-gray-800 text-gray-300 rounded">검색</button>
+                    </div>
+                    <div id="admin-users-list" class="space-y-2"></div>
+                </div>
+                <div id="admin-broadcast-area" class="hidden space-y-2">
+                    <textarea id="broadcast-content" class="w-full bg-black border border-gray-700 text-white text-sm rounded p-2 h-24" placeholder="전 강호에 알릴 관방 공지를 적으시오"></textarea>
+                    <button onclick="sendBroadcast()" class="w-full py-2 text-sm bg-yellow-600 text-black rounded-xl font-bold hover:bg-yellow-500">공지 발송</button>
+                    <div class="text-[11px] text-gray-500">공지 발송은 모든 문도에게 전갈로 전해지오.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+ 
 </body>
 </html>
