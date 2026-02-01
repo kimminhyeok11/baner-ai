@@ -270,16 +270,63 @@ function updateHeaderUI() {
 // 4. 이미지/미디어 처리
 // ------------------------------------------------------------------
 
+async function toWebpBlob(file, maxDim = 1920, quality = 0.85) {
+    const url = URL.createObjectURL(file);
+    const img = await new Promise((resolve, reject) => {
+        const i = new Image();
+        i.onload = () => resolve(i);
+        i.onerror = reject;
+        i.src = url;
+    });
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    const w = Math.round(img.width * scale);
+    const h = Math.round(img.height * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', quality));
+    URL.revokeObjectURL(url);
+    return blob;
+}
+
+function storagePathFromUrl(publicUrl) {
+    const m = publicUrl.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
+    if (!m) return null;
+    const bucket = m[1];
+    const path = m[2];
+    if (bucket !== STORAGE_BUCKET) return null;
+    return path;
+}
+
+async function deleteStorageFileByUrl(publicUrl) {
+    const path = storagePathFromUrl(publicUrl);
+    if (!path) return;
+    try {
+        await client.storage.from(STORAGE_BUCKET).remove([path]);
+    } catch (e) {
+        console.warn('Storage 삭제 실패:', e);
+    }
+}
+
 async function uploadImage(file, folderPath) {
-    const fileExtension = file.name.split('.').pop();
-    const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExtension}`;
+    const isImg = file.type && file.type.startsWith('image/');
+    let blob = file;
+    let ext = isImg ? 'webp' : (file.name.split('.').pop() || 'bin');
+    if (isImg && file.type !== 'image/webp') {
+        blob = await toWebpBlob(file);
+        ext = 'webp';
+    }
+    const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${ext}`;
     const filePath = `${folderPath}/${fileName}`;
     
     const { data, error } = await client.storage
         .from(STORAGE_BUCKET)
-        .upload(filePath, file, { 
+        .upload(filePath, blob, { 
             cacheControl: '3600',
             upsert: false,
+            contentType: isImg ? 'image/webp' : file.type || 'application/octet-stream'
         });
 
     if (error) {
@@ -313,6 +360,14 @@ window.handleImageUpload = async function() {
         fileInput.value = '';
     }
 };
+
+function extractImageStoragePathsFromHtml(html) {
+    const container = document.createElement('div');
+    container.innerHTML = html || '';
+    const imgs = Array.from(container.querySelectorAll('img'));
+    const paths = imgs.map(img => storagePathFromUrl(img.src)).filter(p => !!p && p.startsWith('posts/'));
+    return Array.from(new Set(paths));
+}
 
 window.openYouTubeModal = function() {
     document.getElementById('youtube-url-input').value = '';
@@ -470,6 +525,9 @@ window.deletePost = async function(postId) {
     closeModal('deleteConfirmModal');
     if (!postId || !state.user) return;
     
+    const html = state.postToEdit?.content || '';
+    const imagePaths = extractImageStoragePathsFromHtml(html);
+    
     let query = client.from('posts').delete().eq('id', postId);
     if (state.profile?.role !== 'admin') {
         query = query.eq('user_id', state.user.id);
@@ -480,6 +538,13 @@ window.deletePost = async function(postId) {
         showToast('파기 권한이 없거나 문제가 생겼소.', 'error');
     } else {
         showToast('비급이 파기되었소.', 'success');
+        if (imagePaths.length > 0) {
+            try {
+                await client.storage.from(STORAGE_BUCKET).remove(imagePaths);
+            } catch (e) {
+                console.warn('비급 첨부 이미지 삭제 실패:', e);
+            }
+        }
         closeModal('postDetailModal');
         navigate(document.querySelector('.app-view:not(.hidden)').id);
     }
@@ -819,6 +884,7 @@ window.updateAvatar = async function() {
     const file = input.files[0];
     if (!file) return showToast('이미지를 선택하시오.', 'error');
     try {
+        const oldUrl = state.profile?.avatar_url;
         const url = await uploadImage(file, 'avatars');
         const { error } = await client.from('profiles').update({ avatar_url: url }).eq('id', state.user.id);
         if (error) {
@@ -830,6 +896,7 @@ window.updateAvatar = async function() {
             img.src = url;
             img.classList.remove('hidden');
             icon.classList.add('hidden');
+            if (oldUrl) deleteStorageFileByUrl(oldUrl);
         }
     } finally {
         input.value = '';
@@ -842,6 +909,7 @@ window.updateBanner = async function() {
     const file = input.files[0];
     if (!file) return showToast('이미지를 선택하시오.', 'error');
     try {
+        const oldUrl = state.profile?.banner_url;
         const url = await uploadImage(file, 'banners');
         const { error } = await client.from('profiles').update({ banner_url: url }).eq('id', state.user.id);
         if (error) {
@@ -852,10 +920,47 @@ window.updateBanner = async function() {
             card.style.backgroundImage = `url('${url}')`;
             card.style.backgroundSize = 'cover';
             card.style.backgroundPosition = 'center';
+            if (oldUrl) deleteStorageFileByUrl(oldUrl);
+            if (state.profile) state.profile.banner_url = url;
         }
     } finally {
         input.value = '';
     }
+}
+
+window.removeAvatar = async function() {
+    if (!state.user) return showToast('입문이 필요하오.', 'error');
+    const oldUrl = state.profile?.avatar_url;
+    if (!oldUrl) return showToast('이미 등록된 용모가 없소.', 'error');
+    const { error } = await client.from('profiles').update({ avatar_url: null }).eq('id', state.user.id);
+    if (error) return showToast('용모 제거에 차질이 생겼소.', 'error');
+    deleteStorageFileByUrl(oldUrl);
+    const img = document.getElementById('my-avatar');
+    const icon = document.getElementById('my-profile-icon');
+    if (img) {
+        img.src = '';
+        img.classList.add('hidden');
+    }
+    if (icon) icon.classList.remove('hidden');
+    if (state.profile) state.profile.avatar_url = null;
+    showToast('용모를 제거했소.', 'success');
+}
+
+window.removeBanner = async function() {
+    if (!state.user) return showToast('입문이 필요하오.', 'error');
+    const oldUrl = state.profile?.banner_url;
+    if (!oldUrl) return showToast('등록된 깃발이 없소.', 'error');
+    const { error } = await client.from('profiles').update({ banner_url: null }).eq('id', state.user.id);
+    if (error) return showToast('문파 깃발 제거에 차질이 생겼소.', 'error');
+    deleteStorageFileByUrl(oldUrl);
+    const card = document.getElementById('my-profile-card');
+    if (card) {
+        card.style.backgroundImage = '';
+        card.style.backgroundSize = '';
+        card.style.backgroundPosition = '';
+    }
+    if (state.profile) state.profile.banner_url = null;
+    showToast('문파 깃발을 제거했소.', 'success');
 }
 
 window.updateNotificationSettings = async function() {
