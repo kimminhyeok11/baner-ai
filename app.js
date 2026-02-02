@@ -1401,6 +1401,11 @@ window.openPostDetail = async function(post) {
     
     loadComments(post.id);
     modal.classList.remove('hidden');
+    // 히스토리 푸시: 모바일 뒤로가기 지원
+    const targetHash = `#post-${post.id}`;
+    if (window.location.hash !== targetHash) {
+        window.history.pushState({ view: 'post', postId: post.id }, null, targetHash);
+    }
 }
 
 window.toggleLike = async function() {
@@ -1881,7 +1886,18 @@ function init() {
         const hash = window.location.hash.replace('#', '');
         if (hash) {
             if (hash.startsWith('post-')) {
-                navigate('gangho-plaza'); 
+                const postId = hash.substring(5);
+                client.from('posts')
+                    .select(`*, profiles:user_id (nickname, post_count, comment_count, avatar_url)`)
+                    .eq('id', postId)
+                    .single()
+                    .then(({ data }) => {
+                        if (data) {
+                            openPostDetail(data);
+                        } else {
+                            closeModal('postDetailModal');
+                        }
+                    });
             } else {
                 navigate(hash, false);
             }
@@ -1891,8 +1907,22 @@ function init() {
     };
 
     const initialHash = window.location.hash.replace('#', '');
-    if(initialHash && document.getElementById(initialHash)) {
-        navigate(initialHash, false);
+    if (initialHash) {
+        if (initialHash.startsWith('post-')) {
+            const postId = initialHash.substring(5);
+            client.from('posts')
+                .select(`*, profiles:user_id (nickname, post_count, comment_count, avatar_url)`)
+                .eq('id', postId)
+                .single()
+                .then(({ data }) => {
+                    if (data) openPostDetail(data);
+                    else navigate('gangho-plaza', false);
+                });
+        } else if (document.getElementById(initialHash)) {
+            navigate(initialHash, false);
+        } else {
+            navigate('gangho-plaza', false);
+        }
     } else {
         navigate('gangho-plaza', false);
     }
@@ -2055,6 +2085,12 @@ window.closeModal = (id) => {
             client.removeChannel(state.realtimeChannels[key]);
             delete state.realtimeChannels[key];
         }
+        // 히스토리 되돌림: 모바일 뒤로가기 자연스러운 동작
+        try {
+            if (window.location.hash.startsWith('#post-')) {
+                window.history.back();
+            }
+        } catch (e) {}
         state.currentPostId = null;
     }
 };
