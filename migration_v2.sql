@@ -234,3 +234,28 @@ begin
     alter publication supabase_realtime add table public.messages;
   end if;
 end $$;
+
+-- 5. 사용자 관계 (팔로우/뮤트/차단)
+create table if not exists public.user_relationships (
+  user_id uuid references public.profiles(id) on delete cascade,
+  target_id uuid references public.profiles(id) on delete cascade,
+  type text not null, -- 'follow', 'mute', 'block'
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  primary key (user_id, target_id, type)
+);
+alter table public.user_relationships enable row level security;
+
+drop policy if exists "Relationships are viewable by everyone" on public.user_relationships;
+create policy "Relationships are viewable by everyone"
+  on public.user_relationships for select
+  using ( true );
+
+drop policy if exists "Users can insert own relationships" on public.user_relationships;
+create policy "Users can insert own relationships"
+  on public.user_relationships for insert
+  with check ( auth.uid() = user_id );
+
+drop policy if exists "Users can delete own relationships" on public.user_relationships;
+create policy "Users can delete own relationships"
+  on public.user_relationships for delete
+  using ( auth.uid() = user_id );

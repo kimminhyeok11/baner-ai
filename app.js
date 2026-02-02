@@ -24,7 +24,13 @@ const state = {
         hasMore: true,
         isLoading: false
     },
-    searchQuery: ''
+    searchQuery: '',
+    relationships: {
+        follows: new Set(),
+        blocks: new Set(),
+        mutes: new Set()
+    },
+    currentTargetUserId: null
 };
 
 const LEVEL_NAMES = ['입문자', '초학자', '시세견습', '기문초해', '자본내공가', '강호시세객', '전략비급사', '시장현경', '초절정투객', '절세투자고수', '금룡장문'];
@@ -225,6 +231,7 @@ async function updateAuthState(session) {
         if (typeof fetchMyLikes === 'function') await fetchMyLikes();
         if (typeof checkUnreadNotifications === 'function') checkUnreadNotifications();
         if (typeof setupRealtimeNotifications === 'function') setupRealtimeNotifications();
+        await fetchMyRelationships();
 
         // Show My Page button
         const navBtn = document.getElementById('nav-my-page');
@@ -232,6 +239,7 @@ async function updateAuthState(session) {
     } else {
         state.profile = null;
         state.likedPostIds = new Set();
+        state.relationships = { follows: new Set(), blocks: new Set(), mutes: new Set() };
         document.documentElement.setAttribute('data-theme', 'dark');
         
         // Hide My Page button
@@ -1120,7 +1128,7 @@ async function fetchPosts(type, stockName = null, isLoadMore = false) {
     const to = from + state.pagination.limit - 1;
 
     let query = client.from('posts')
-        .select(`*, profiles:user_id (nickname, post_count, comment_count)`) 
+        .select(`*, profiles:user_id (nickname, post_count, comment_count, avatar_url)`) 
         .eq('type', type)
         .order('created_at', { ascending: false })
         .range(from, to);
@@ -1143,8 +1151,10 @@ async function fetchPosts(type, stockName = null, isLoadMore = false) {
     } else {
         state.pagination.page++;
     }
-    
-    return data || [];
+    const posts = data || [];
+    const blocked = state.relationships.blocks;
+    const filtered = blocked.size ? posts.filter(p => !p.user_id || !blocked.has(p.user_id)) : posts;
+    return filtered;
 }
 
 function createPostElement(post) {
@@ -1152,6 +1162,7 @@ function createPostElement(post) {
     const level = post.profiles ? calculateLevel(post.profiles.post_count, post.profiles.comment_count) : { name: '입문자', color: 'text-gray-500' };
     const mugong = MU_GONG_TYPES.find(m => m.id === post.mugong_id);
     const isSecret = post.type === 'secret';
+    const avatar = post.profiles?.avatar_url || '';
 
     const postEl = document.createElement('div');
     postEl.className = 'bg-[#1f2937] p-4 rounded-xl shadow-lg border border-gray-700 hover:border-yellow-600 transition cursor-pointer';
@@ -1165,14 +1176,88 @@ function createPostElement(post) {
         </div>
         <div class="text-xs text-gray-400 flex justify-between items-center">
             <div class="flex items-center space-x-2">
+                <img src="${avatar || ''}" alt="" class="w-5 h-5 rounded-full border border-gray-700 ${avatar ? '' : 'hidden'}">
                 <span class="${level.color} font-medium">${level.name}</span>
-                <span class="text-yellow-400">${author}</span>
+                <button class="text-yellow-400 hover:underline" ${post.user_id ? '' : 'disabled'}>${author}</button>
                 ${mugong ? `<span class="px-2 py-0.5 rounded-full text-[10px] bg-gray-700 ${mugong.color}">${mugong.tag}</span>` : ''}
             </div>
             <span class="text-gray-500">${new Date(post.created_at).toLocaleDateString()}</span>
         </div>
     `;
+    const authorBtn = postEl.querySelector('button.text-yellow-400');
+    if (authorBtn && post.user_id) {
+        authorBtn.onclick = (e) => { e.stopPropagation(); openUserSheet(post.user_id, author, avatar); };
+    }
+    const avatarImg = postEl.querySelector('img');
+    if (avatarImg && post.user_id) {
+        avatarImg.onclick = (e) => { e.stopPropagation(); openUserSheet(post.user_id, author, avatar); };
+        avatarImg.onerror = () => { avatarImg.classList.add('hidden'); };
+    }
     return postEl;
+}
+
+async function fetchMyRelationships() {
+    try {
+        const { data, error } = await client.from('user_relationships').select('target_id,type').eq('user_id', state.user.id);
+        if (error) return;
+        const follows = new Set();
+        const blocks = new Set();
+        const mutes = new Set();
+        (data || []).forEach(r => {
+            if (r.type === 'follow') follows.add(r.target_id);
+            else if (r.type === 'block') blocks.add(r.target_id);
+            else if (r.type === 'mute') mutes.add(r.target_id);
+        });
+        state.relationships = { follows, blocks, mutes };
+    } catch (e) {}
+}
+
+window.openUserSheet = function(userId, userName, userAvatar) {
+    if (!state.user || !userId || userId === state.user.id) return;
+    state.currentTargetUserId = userId;
+    const sheet = document.getElementById('userActionSheet');
+    const nameEl = document.getElementById('user-sheet-name');
+    const avatarEl = document.getElementById('user-sheet-avatar');
+    const msgBtn = document.getElementById('sheet-msg-btn');
+    const followBtn = document.getElementById('follow-btn');
+    const blockBtn = document.getElementById('block-btn');
+    nameEl.innerText = userName || '알 수 없음';
+    avatarEl.src = userAvatar || '';
+    avatarEl.classList.toggle('hidden', !userAvatar);
+    avatarEl.onerror = () => avatarEl.classList.add('hidden');
+    msgBtn.onclick = () => { openMessageCompose(userId, userName); closeModal('userActionSheet'); };
+    const isFollow = state.relationships.follows.has(userId);
+    const isBlock = state.relationships.blocks.has(userId);
+    followBtn.innerText = isFollow ? '팔로우 해제' : '팔로우';
+    blockBtn.innerText = isBlock ? '차단 해제' : '차단';
+    followBtn.onclick = async () => { await toggleRelationship('follow', userId); openUserSheet(userId, userName, userAvatar); };
+    blockBtn.onclick = async () => { await toggleRelationship('block', userId); openUserSheet(userId, userName, userAvatar); };
+    sheet.classList.remove('hidden');
+};
+
+async function toggleRelationship(type, targetId) {
+    if (!state.user || !targetId) return;
+    const set = type === 'follow' ? state.relationships.follows
+              : type === 'block' ? state.relationships.blocks
+              : state.relationships.mutes;
+    try {
+        if (set.has(targetId)) {
+            await client.from('user_relationships').delete().match({ user_id: state.user.id, target_id: targetId, type });
+            set.delete(targetId);
+            if (type === 'block') {}
+        } else {
+            await client.from('user_relationships').insert({ user_id: state.user.id, target_id: targetId, type });
+            set.add(targetId);
+        }
+        showToast(type === 'follow'
+            ? (set.has(targetId) ? '팔로우했습니다.' : '팔로우를 해제했습니다.')
+            : type === 'block'
+              ? (set.has(targetId) ? '차단했습니다.' : '차단을 해제했습니다.')
+              : (set.has(targetId) ? '뮤트했습니다.' : '뮤트를 해제했습니다.'),
+            'success');
+    } catch (e) {
+        showToast('처리에 차질이 생겼소.', 'error');
+    }
 }
 
 async function renderPosts(containerId, type, stockName = null) {
@@ -1819,6 +1904,12 @@ function init() {
         }
     }
     
+    window.onkeydown = function(e) {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('[id$="Modal"]').forEach(m => m.classList.add('hidden'));
+        }
+    }
+    
     attachRealtimeDiagnostics();
     setupGlobalRealtime();
 }
@@ -2107,6 +2198,7 @@ window.openNotificationModal = function() {
     if (!state.user) return showToast('입문 후 이용 가능하오.', 'error');
     openModal('notificationModal');
     loadNotifications();
+    scheduleNotificationAutoClose();
 }
 
 async function loadNotifications() {
@@ -2126,6 +2218,7 @@ async function loadNotifications() {
 
     if (data.length === 0) {
         list.innerHTML = '<div class="text-center text-gray-500 mt-4 text-xs">새로운 전갈이 없소.</div>';
+        scheduleNotificationAutoClose();
         return;
     }
 
@@ -2138,6 +2231,11 @@ async function loadNotifications() {
             </div>
         </div>
     `).join('');
+    const modal = document.getElementById('notificationModal');
+    if (modal) {
+        modal.onmouseenter = cancelNotificationAutoClose;
+        modal.onmouseleave = scheduleNotificationAutoClose;
+    }
 }
 
 window.handleNotificationClick = async function(link, notiId) {
@@ -2180,6 +2278,21 @@ function setupRealtimeMessages() {
     checkUnreadMessages();
 }
 
+let notificationAutoCloseTimer = null;
+function scheduleNotificationAutoClose() {
+    cancelNotificationAutoClose();
+    notificationAutoCloseTimer = setTimeout(() => {
+        const modal = document.getElementById('notificationModal');
+        if (modal && !modal.classList.contains('hidden')) closeModal('notificationModal');
+    }, 3000);
+}
+function cancelNotificationAutoClose() {
+    if (notificationAutoCloseTimer) {
+        clearTimeout(notificationAutoCloseTimer);
+        notificationAutoCloseTimer = null;
+    }
+}
+
 function setupRealtimeNotifications() {
     if (!state.user) return;
     if (state.realtimeChannels['notifications']) client.removeChannel(state.realtimeChannels['notifications']);
@@ -2199,6 +2312,7 @@ function setupRealtimeNotifications() {
             checkUnreadNotifications();
             if (!document.getElementById('notificationModal').classList.contains('hidden')) {
                 loadNotifications();
+                scheduleNotificationAutoClose();
             }
         })
         .subscribe();
