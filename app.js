@@ -360,8 +360,7 @@ window.handleImageUpload = async function() {
         const publicUrl = await uploadImage(file, 'posts');
         const editor = document.getElementById('new-post-content');
         const imgTag = `<img src="${publicUrl}" class="max-w-full h-auto rounded-lg shadow-md my-3" loading="lazy">`;
-        editor.focus();
-        document.execCommand('insertHTML', false, imgTag);
+        insertHtmlAtSelection(imgTag);
     } catch (error) {
         showToast(`화폭 게재에 차질이 생겼소: ${error.message}`, 'error');
     } finally {
@@ -2008,6 +2007,11 @@ function init() {
     attachRealtimeDiagnostics();
     setupGlobalRealtime();
     setupDraggableFab();
+    setupEditorSelectionTracking();
+    const headerEl = document.querySelector('header');
+    const navEl = document.querySelector('nav');
+    if (headerEl) headerEl.classList.remove('hidden');
+    if (navEl) navEl.classList.remove('hidden');
 }
 
 // ------------------------------------------------------------------
@@ -2083,6 +2087,47 @@ function setupGlobalRealtime() {
     );
 }
 
+// ------------------------------------------------------------------
+// 에디터 커서 위치 추적 및 HTML 삽입
+// ------------------------------------------------------------------
+let editorSelectionRange = null;
+function setupEditorSelectionTracking() {
+    const editor = document.getElementById('new-post-content');
+    if (!editor) return;
+    const saveRange = () => {
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0) {
+            editorSelectionRange = sel.getRangeAt(0);
+        }
+    };
+    ['keyup','mouseup','input','focus'].forEach(ev => editor.addEventListener(ev, saveRange));
+    editor.addEventListener('blur', saveRange);
+}
+function insertHtmlAtSelection(html) {
+    const editor = document.getElementById('new-post-content');
+    if (!editor) return;
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+    const node = temp.firstElementChild || document.createTextNode(html);
+    editor.focus();
+    const sel = window.getSelection();
+    if (editorSelectionRange) {
+        sel.removeAllRanges();
+        sel.addRange(editorSelectionRange);
+    }
+    if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        range.insertNode(node);
+        // 커서를 삽입한 노드 뒤로 이동
+        range.setStartAfter(node);
+        range.setEndAfter(node);
+        sel.removeAllRanges();
+        sel.addRange(range);
+    } else {
+        editor.appendChild(node);
+    }
+}
 function setupDraggableFab() {
     const btn = document.getElementById('fab-write-btn');
     if (!btn) return;
@@ -2458,12 +2503,26 @@ function setupRealtimeMessages() {
 }
 
 let notificationAutoCloseTimer = null;
+let notificationInactivityHandlerAttached = false;
 function scheduleNotificationAutoClose() {
-    cancelNotificationAutoClose();
-    notificationAutoCloseTimer = setTimeout(() => {
-        const modal = document.getElementById('notificationModal');
-        if (modal && !modal.classList.contains('hidden')) closeModal('notificationModal');
-    }, 2000);
+    const modal = document.getElementById('notificationModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    const reset = () => {
+        cancelNotificationAutoClose();
+        notificationAutoCloseTimer = setTimeout(() => {
+            const m = document.getElementById('notificationModal');
+            if (m && !m.classList.contains('hidden')) closeModal('notificationModal');
+        }, 3000);
+    };
+    if (!notificationInactivityHandlerAttached) {
+        const list = document.getElementById('notification-list');
+        ['mouseenter','mousemove','wheel','keydown','touchstart','touchmove'].forEach(ev => {
+            modal.addEventListener(ev, reset, { passive: true });
+            if (list) list.addEventListener(ev, reset, { passive: true });
+        });
+        notificationInactivityHandlerAttached = true;
+    }
+    reset();
 }
 function cancelNotificationAutoClose() {
     if (notificationAutoCloseTimer) {
