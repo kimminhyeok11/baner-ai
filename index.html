@@ -359,10 +359,42 @@
             </div>
             <div class="flex flex-col gap-2 mb-4">
                 <button id="sheet-msg-btn" class="w-full py-3 text-sm bg-yellow-600 text-black rounded-lg font-bold">밀서 보내기</button>
+                <button id="sheet-profile-btn" class="w-full py-3 text-sm bg-gray-800 text-white rounded-lg font-bold">프로필 보기</button>
                 <button id="follow-btn" class="w-full py-3 text-sm bg-gray-800 text-white rounded-lg font-bold">팔로우</button>
                 <button id="block-btn" class="w-full py-3 text-sm bg-gray-800 text-white rounded-lg font-bold">차단</button>
             </div>
             <button onclick="closeModal('userActionSheet')" class="w-full py-3 text-sm bg-gray-900 text-gray-300 rounded-lg">닫기</button>
+        </div>
+    </div>
+
+    <!-- Profile View Modal -->
+    <div id="profileViewModal" class="hidden fixed inset-0 z-[70] flex flex-col animate-slide-up bg-black/95 backdrop-blur-xl">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-gray-800 bg-[#1C1C1E]">
+            <span class="text-lg font-bold text-white">협객 프로필</span>
+            <button onclick="closeModal('profileViewModal')" class="w-8 h-8 flex items-center justify-center bg-gray-800 rounded-full text-gray-400">✕</button>
+        </div>
+        <div class="flex-grow overflow-y-auto">
+            <div class="p-4 space-y-4">
+                <div id="pv-card" class="rounded-xl border border-gray-800 bg-[#1C1C1E] p-4 relative">
+                    <div class="h-24 w-full rounded-lg mb-4 bg-cover bg-center"></div>
+                    <div class="flex items-center gap-3">
+                        <img id="pv-avatar" class="w-14 h-14 rounded-full border border-gray-700" src="" alt="">
+                        <div>
+                            <div id="pv-name" class="text-white font-bold text-lg"></div>
+                            <div id="pv-stats" class="text-xs text-gray-400"></div>
+                        </div>
+                    </div>
+                    <div class="mt-4 grid grid-cols-3 gap-2">
+                        <button id="pv-msg-btn" class="py-2 text-sm bg-yellow-600 text-black rounded-lg font-bold">밀서 보내기</button>
+                        <button id="pv-follow-btn" class="py-2 text-sm bg-gray-800 text-white rounded-lg font-bold">팔로우</button>
+                        <button id="pv-block-btn" class="py-2 text-sm bg-gray-800 text-white rounded-lg font-bold">차단</button>
+                    </div>
+                </div>
+                <div>
+                    <h4 class="text-sm font-bold text-gray-400 mb-2">최근 글</h4>
+                    <div id="pv-posts-list" class="space-y-2"></div>
+                </div>
+            </div>
         </div>
     </div>
 

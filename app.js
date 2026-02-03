@@ -905,6 +905,7 @@ window.updateAvatar = async function() {
             img.classList.remove('hidden');
             icon.classList.add('hidden');
             if (oldUrl) deleteStorageFileByUrl(oldUrl);
+            if (state.profile) state.profile.avatar_url = url;
         }
     } finally {
         input.value = '';
@@ -1219,6 +1220,7 @@ window.openUserSheet = function(userId, userName, userAvatar) {
     const nameEl = document.getElementById('user-sheet-name');
     const avatarEl = document.getElementById('user-sheet-avatar');
     const msgBtn = document.getElementById('sheet-msg-btn');
+    const profileBtn = document.getElementById('sheet-profile-btn');
     const followBtn = document.getElementById('follow-btn');
     const blockBtn = document.getElementById('block-btn');
     nameEl.innerText = userName || '알 수 없음';
@@ -1226,6 +1228,7 @@ window.openUserSheet = function(userId, userName, userAvatar) {
     avatarEl.classList.toggle('hidden', !userAvatar);
     avatarEl.onerror = () => avatarEl.classList.add('hidden');
     msgBtn.onclick = () => { openMessageCompose(userId, userName); closeModal('userActionSheet'); };
+    profileBtn.onclick = () => { openProfileView(userId); closeModal('userActionSheet'); };
     const isFollow = state.relationships.follows.has(userId);
     const isBlock = state.relationships.blocks.has(userId);
     followBtn.innerText = isFollow ? '팔로우 해제' : '팔로우';
@@ -1235,6 +1238,65 @@ window.openUserSheet = function(userId, userName, userAvatar) {
     sheet.classList.remove('hidden');
 };
 
+window.openProfileView = async function(userId) {
+    const modal = document.getElementById('profileViewModal');
+    if (!userId) return;
+    const { data: profile } = await client.from('profiles').select('*').eq('id', userId).single();
+    if (!profile) return;
+    const nameEl = document.getElementById('pv-name');
+    const avatarEl = document.getElementById('pv-avatar');
+    const statsEl = document.getElementById('pv-stats');
+    const cardEl = document.getElementById('pv-card').firstElementChild;
+    nameEl.innerText = profile.nickname || '익명 협객';
+    avatarEl.src = profile.avatar_url || '';
+    avatarEl.classList.toggle('hidden', !profile.avatar_url);
+    avatarEl.onerror = () => avatarEl.classList.add('hidden');
+    if (cardEl) {
+        if (profile.banner_url) {
+            cardEl.style.backgroundImage = `url('${profile.banner_url}')`;
+            cardEl.style.backgroundSize = 'cover';
+            cardEl.style.backgroundPosition = 'center';
+        } else {
+            cardEl.style.backgroundImage = '';
+        }
+    }
+    statsEl.innerText = `비급 ${profile.post_count || 0} · 전서 ${profile.comment_count || 0}`;
+    const msgBtn = document.getElementById('pv-msg-btn');
+    const followBtn = document.getElementById('pv-follow-btn');
+    const blockBtn = document.getElementById('pv-block-btn');
+    msgBtn.onclick = () => { openMessageCompose(userId, profile.nickname || '협객'); };
+    const isFollow = state.relationships.follows.has(userId);
+    const isBlock = state.relationships.blocks.has(userId);
+    followBtn.innerText = isFollow ? '팔로우 해제' : '팔로우';
+    blockBtn.innerText = isBlock ? '차단 해제' : '차단';
+    followBtn.onclick = async () => { await toggleRelationship('follow', userId); openProfileView(userId); };
+    blockBtn.onclick = async () => { await toggleRelationship('block', userId); openProfileView(userId); };
+    const list = document.getElementById('pv-posts-list');
+    list.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">비급을 찾는 중...</div>';
+    const { data: posts } = await client.from('posts')
+        .select(`*, profiles:user_id (nickname, post_count, comment_count, avatar_url)`)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+    list.innerHTML = '';
+    if (!posts || posts.length === 0) {
+        list.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">최근에 올린 비급이 없소.</div>';
+    } else {
+        posts.forEach(p => {
+            const el = document.createElement('div');
+            el.className = 'p-3 rounded-lg border border-gray-800 bg-gray-900/40 hover:bg-gray-800 transition cursor-pointer';
+            el.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <span class="text-sm text-white truncate">${p.title}</span>
+                    <span class="text-[10px] text-gray-500">${new Date(p.created_at).toLocaleDateString()}</span>
+                </div>
+            `;
+            el.onclick = () => { closeModal('profileViewModal'); openPostDetail(p); };
+            list.appendChild(el);
+        });
+    }
+    modal.classList.remove('hidden');
+};
 async function toggleRelationship(type, targetId) {
     if (!state.user || !targetId) return;
     const set = type === 'follow' ? state.relationships.follows
@@ -1532,20 +1594,22 @@ window.setReplyTarget = function(commentId, authorName) {
     state.replyToCommentId = commentId;
     const input = document.getElementById('comment-input');
     input.placeholder = `@${authorName} 대협에게 답신 작성 중...`;
+    input.classList.add('pl-8');
     input.focus();
     
     let cancelBtn = document.getElementById('cancel-reply-btn');
     if(!cancelBtn) {
         cancelBtn = document.createElement('button');
         cancelBtn.id = 'cancel-reply-btn';
-        cancelBtn.innerText = 'x';
-        cancelBtn.className = 'text-red-400 text-xs px-2 font-bold';
+        cancelBtn.innerText = '✕';
+        cancelBtn.className = 'absolute left-2 top-1/2 -translate-y-1/2 text-red-400 text-xs font-bold';
         cancelBtn.onclick = () => {
             state.replyToCommentId = null;
             input.placeholder = '전서(댓글)를 남기시오...';
+            input.classList.remove('pl-8');
             cancelBtn.remove();
         };
-        input.parentNode.insertBefore(cancelBtn, input.nextSibling);
+        input.parentNode.appendChild(cancelBtn);
     }
 }
 
@@ -1590,6 +1654,7 @@ async function addComment() {
         input.placeholder = '전서(댓글)를 남기시오...';
         const cancelBtn = document.getElementById('cancel-reply-btn');
         if(cancelBtn) cancelBtn.remove();
+        input.classList.remove('pl-8');
     }
 }
 
@@ -1942,6 +2007,7 @@ function init() {
     
     attachRealtimeDiagnostics();
     setupGlobalRealtime();
+    setupDraggableFab();
 }
 
 // ------------------------------------------------------------------
@@ -2017,6 +2083,83 @@ function setupGlobalRealtime() {
     );
 }
 
+function setupDraggableFab() {
+    const btn = document.getElementById('fab-write-btn');
+    if (!btn) return;
+    const saved = localStorage.getItem('fab_pos');
+    if (saved) {
+        try {
+            const { x, y } = JSON.parse(saved);
+            btn.style.left = `${x}px`;
+            btn.style.top = `${y}px`;
+            btn.style.right = 'auto';
+            btn.style.bottom = 'auto';
+            btn.style.position = 'fixed';
+        } catch {}
+    }
+    const stateFab = { dragging: false, startX: 0, startY: 0, originX: 0, originY: 0, preventClick: false };
+    const getClamp = () => {
+        const w = btn.offsetWidth || 56;
+        const h = btn.offsetHeight || 56;
+        const maxX = window.innerWidth - w - 8;
+        const maxY = window.innerHeight - h - 8;
+        return { maxX, maxY, w, h };
+    };
+    const onDown = (e) => {
+        const p = e.touches ? e.touches[0] : e;
+        const rect = btn.getBoundingClientRect();
+        stateFab.dragging = true;
+        stateFab.startX = p.clientX;
+        stateFab.startY = p.clientY;
+        stateFab.originX = rect.left;
+        stateFab.originY = rect.top;
+        stateFab.preventClick = false;
+        btn.style.transition = 'none';
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onUp);
+        document.addEventListener('touchmove', onMove, { passive: false });
+        document.addEventListener('touchend', onUp);
+    };
+    const onMove = (e) => {
+        if (!stateFab.dragging) return;
+        const p = e.touches ? e.touches[0] : e;
+        const dx = p.clientX - stateFab.startX;
+        const dy = p.clientY - stateFab.startY;
+        if (Math.abs(dx) + Math.abs(dy) > 5) stateFab.preventClick = true;
+        const { maxX, maxY } = getClamp();
+        let nx = Math.min(Math.max(stateFab.originX + dx, 8), maxX);
+        let ny = Math.min(Math.max(stateFab.originY + dy, 8), maxY);
+        btn.style.left = `${nx}px`;
+        btn.style.top = `${ny}px`;
+        btn.style.right = 'auto';
+        btn.style.bottom = 'auto';
+        btn.style.position = 'fixed';
+        e.preventDefault();
+    };
+    const onUp = () => {
+        if (!stateFab.dragging) return;
+        stateFab.dragging = false;
+        btn.style.transition = '';
+        const rect = btn.getBoundingClientRect();
+        const { maxX, maxY } = getClamp();
+        const x = Math.min(Math.max(rect.left, 8), maxX);
+        const y = Math.min(Math.max(rect.top, 8), maxY);
+        localStorage.setItem('fab_pos', JSON.stringify({ x, y }));
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('touchend', onUp);
+    };
+    btn.addEventListener('pointerdown', onDown);
+    btn.addEventListener('touchstart', onDown, { passive: true });
+    btn.addEventListener('click', (e) => {
+        if (stateFab.preventClick) {
+            e.stopPropagation();
+            e.preventDefault();
+            stateFab.preventClick = false;
+        }
+    }, true);
+}
 async function handleNewPostRealtime(newPost) {
     // 현재 보고 있는 뷰 타입 확인
     const currentView = window.getCurrentViewType(); // 'public', 'stock', 'secret'
@@ -2320,7 +2463,7 @@ function scheduleNotificationAutoClose() {
     notificationAutoCloseTimer = setTimeout(() => {
         const modal = document.getElementById('notificationModal');
         if (modal && !modal.classList.contains('hidden')) closeModal('notificationModal');
-    }, 3000);
+    }, 2000);
 }
 function cancelNotificationAutoClose() {
     if (notificationAutoCloseTimer) {
