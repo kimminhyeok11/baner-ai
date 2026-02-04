@@ -65,6 +65,21 @@ body {
 /* Typography Enhancements */
 h1, h2, h3, h4 { letter-spacing: -0.02em; }
 
+/* Unified Card Component */
+.card {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--separator);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    padding: 1rem;
+    transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+.card:hover {
+    border-color: var(--accent-color);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+}
+
 /* Editor Styles - Mobile First & Clean */
 #new-post-content { 
     min-height: 300px; 
@@ -99,6 +114,33 @@ blockquote {
     background: var(--bg-tertiary); 
     padding: 0.75rem 1rem; 
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+/* Editor Toolbar Sticky & Touch Targets */
+.editor-toolbar {
+    position: sticky;
+    bottom: 0;
+    z-index: 30;
+}
+.editor-toolbar button,
+.editor-toolbar label {
+    padding: 0.5rem;
+    border-radius: var(--radius-sm);
+}
+.editor-toolbar svg {
+    width: 26px;
+    height: 26px;
+}
+
+/* Navigation Active State */
+.nav-btn {
+    color: var(--text-secondary);
+    border-bottom: 2px solid transparent;
+}
+.nav-btn[aria-selected="true"] {
+    color: var(--accent-color);
+    border-bottom-color: var(--accent-color);
+    font-weight: 600;
 }
 
 /* Safe Area Utility */

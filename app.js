@@ -566,14 +566,12 @@ function navigate(viewId, pushHistory = true) {
     document.getElementById(viewId).classList.remove('hidden');
 
     document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.remove('text-yellow-400', 'border-yellow-400');
-        btn.classList.add('text-gray-500', 'border-transparent');
+        btn.setAttribute('aria-selected', 'false');
     });
 
     const activeBtn = document.querySelector(`button[onclick*="navigate('${viewId}')"]`);
     if (activeBtn) {
-        activeBtn.classList.replace('text-gray-500', 'text-yellow-400');
-        activeBtn.classList.replace('border-transparent', 'border-yellow-400');
+        activeBtn.setAttribute('aria-selected', 'true');
     }
 
     if (pushHistory) {
@@ -1165,7 +1163,7 @@ function createPostElement(post) {
     const avatar = post.profiles?.avatar_url || '';
 
     const postEl = document.createElement('div');
-    postEl.className = 'bg-[#1f2937] p-4 rounded-xl shadow-lg border border-gray-700 hover:border-yellow-600 transition cursor-pointer';
+    postEl.className = 'card cursor-pointer';
     postEl.dataset.postId = post.id;
     postEl.onclick = () => openPostDetail(post);
 
@@ -1942,12 +1940,28 @@ window.switchLegalTab = function(tab) {
 }
 
 function init() {
+    // 헤더/네비 즉시 표시 (직접 접속 시 UI 보장)
+    const headerEl = document.querySelector('header');
+    const navEl = document.querySelector('nav');
+    if (headerEl) headerEl.classList.remove('hidden');
+    if (navEl) navEl.classList.remove('hidden');
+
     const mugongSel = document.getElementById('mu-gong-select');
     MU_GONG_TYPES.forEach(m => mugongSel.innerHTML += `<option value="${m.id}">${m.name}</option>`);
     checkSession();
     fetchStockTags();
     window.onpopstate = () => {
         const hash = window.location.hash.replace('#', '');
+        
+        // 뒤로가기 시 열려있는 모달들 닫기
+        ['postDetailModal', 'newPostModal', 'notificationModal', 'messageModal', 'userActionSheet', 'profileViewModal'].forEach(id => {
+            const m = document.getElementById(id);
+            if (m && !m.classList.contains('hidden')) {
+                // postDetailModal은 아래 로직에서 처리되거나, 여기서 닫음
+                if (id !== 'postDetailModal') closeModal(id);
+            }
+        });
+
         if (hash) {
             if (hash.startsWith('post-')) {
                 const postId = hash.substring(5);
@@ -1963,9 +1977,21 @@ function init() {
                         }
                     });
             } else {
+                // 포스트 모달이 열려있다면 닫기 (URL이 포스트가 아니므로)
+                const pm = document.getElementById('postDetailModal');
+                if (pm && !pm.classList.contains('hidden')) {
+                    pm.classList.add('hidden');
+                    state.currentPostId = null;
+                }
                 navigate(hash, false);
             }
         } else {
+            // 포스트 모달 닫기
+            const pm = document.getElementById('postDetailModal');
+            if (pm && !pm.classList.contains('hidden')) {
+                pm.classList.add('hidden');
+                state.currentPostId = null;
+            }
             navigate('gangho-plaza', false);
         }
     };
@@ -1994,6 +2020,8 @@ function init() {
     window.onclick = function(event) {
         const t = event.target;
         if (t.classList.contains('fixed') && typeof t.id === 'string' && t.id.endsWith('Modal')) {
+            // notificationModal은 자동닫기 로직이 있으므로 클릭 닫기 제외하거나, 포함해도 됨.
+            // 여기서는 모든 모달 배경 클릭 시 닫기
             t.classList.add('hidden');
         }
     }
@@ -2001,6 +2029,7 @@ function init() {
     window.onkeydown = function(e) {
         if (e.key === 'Escape') {
             document.querySelectorAll('[id$="Modal"]').forEach(m => m.classList.add('hidden'));
+            document.getElementById('userActionSheet').classList.add('hidden');
         }
     }
     
@@ -2008,10 +2037,6 @@ function init() {
     setupGlobalRealtime();
     setupDraggableFab();
     setupEditorSelectionTracking();
-    const headerEl = document.querySelector('header');
-    const navEl = document.querySelector('nav');
-    if (headerEl) headerEl.classList.remove('hidden');
-    if (navEl) navEl.classList.remove('hidden');
 }
 
 // ------------------------------------------------------------------
