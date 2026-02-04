@@ -18,6 +18,7 @@ const state = {
     realtimeChannels: {},
     guestName: `무협객_${Math.floor(Math.random() * 1000)}`,
     replyToCommentId: null, // 대댓글 대상 ID
+    previewEnabled: (() => { try { return JSON.parse(localStorage.getItem('preview_enabled') || 'true'); } catch { return true; } })(),
     pagination: {
         limit: 10,
         page: 0,
@@ -33,6 +34,10 @@ const state = {
     currentTargetUserId: null
 };
 
+try {
+    const savedProxy = localStorage.getItem('link_preview_proxy');
+    if (savedProxy) window.LINK_PREVIEW_PROXY = savedProxy;
+} catch {}
 const LEVEL_NAMES = ['입문자', '초학자', '시세견습', '기문초해', '자본내공가', '강호시세객', '전략비급사', '시장현경', '초절정투객', '절세투자고수', '금룡장문'];
 
 const MU_GONG_TYPES = [
@@ -55,9 +60,14 @@ function showToast(message, type = 'info') {
     if (type === 'info') bgClass = 'bg-gray-800/90 border border-gray-600';
 
     toast.className = `${bgClass} text-white px-4 py-2 rounded-lg shadow-xl text-sm font-medium flex items-center gap-2 toast-enter`;
-    toast.innerHTML = `<span>${message}</span>`;
+    toast.innerHTML = `<span class="flex-1">${message}</span><button class="text-xs bg-gray-700 text-white px-2 py-1 rounded hover:bg-gray-600">닫기</button>`;
     
     container.appendChild(toast);
+    const closeBtn = toast.querySelector('button');
+    closeBtn.onclick = () => {
+        toast.classList.add('toast-exit-active');
+        setTimeout(() => { if (toast && toast.parentNode) toast.remove(); }, 300);
+    };
     
     // Trigger reflow
     toast.offsetHeight;
@@ -66,7 +76,9 @@ function showToast(message, type = 'info') {
 
     setTimeout(() => {
         toast.classList.add('toast-exit-active');
-        toast.addEventListener('transitionend', () => toast.remove());
+        const removeFn = () => { if (toast && toast.parentNode) toast.remove(); };
+        toast.addEventListener('transitionend', removeFn, { once: true });
+        setTimeout(removeFn, 400);
     }, 3000);
 }
 
@@ -76,6 +88,147 @@ function calculateLevel(postCount, commentCount) {
     return { name: LEVEL_NAMES[idx], color: idx > 5 ? 'text-yellow-400' : 'text-cyan-400' };
 }
 
+function linkifyHtml(html, enablePreview = state.previewEnabled) {
+    const temp = document.createElement('div');
+    temp.innerHTML = html || '';
+    const regex = /(https?:\/\/[^\s<]+|www\.[^\s<]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|\b(?:0(?:2|1\d|[3-6]\d))[-.\s]?\d{3,4}[-.\s]?\d{4}\b|\b(?!https?:\/\/|www\.)[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s<]*)?)/gi;
+    const walker = document.createTreeWalker(temp, NodeFilter.SHOW_TEXT, null);
+    const texts = [];
+    while (walker.nextNode()) texts.push(walker.currentNode);
+    texts.forEach(node => {
+        const t = node.nodeValue;
+        if (!regex.test(t)) return;
+        const frag = document.createDocumentFragment();
+        let last = 0;
+        t.replace(regex, (m, _g, idx) => {
+            const before = t.slice(last, idx);
+            if (before) frag.appendChild(document.createTextNode(before));
+            const a = document.createElement('a');
+            let href = m;
+            let isWeb = false;
+            if (m.includes('@')) {
+                href = `mailto:${m}`;
+            } else if (/^(?:0(?:2|1\d|[3-6]\d))[-.\s]?\d{3,4}[-.\s]?\d{4}$/.test(m)) {
+                const tel = m.replace(/[^\d]/g, '');
+                href = `tel:${tel}`;
+            } else if (m.startsWith('www.')) {
+                href = `https://${m}`;
+                isWeb = true;
+            } else if (/^https?:\/\//i.test(m)) {
+                href = m;
+                isWeb = true;
+            } else {
+                href = `https://${m}`;
+                isWeb = true;
+            }
+            a.href = href;
+            a.textContent = m;
+            if (isWeb) {
+                a.target = '_blank';
+                a.rel = 'noopener noreferrer';
+            }
+            a.className = 'text-yellow-400 underline break-all';
+            frag.appendChild(a);
+            last = idx + m.length;
+            return m;
+        });
+        const after = t.slice(last);
+        if (after) frag.appendChild(document.createTextNode(after));
+        node.parentNode.replaceChild(frag, node);
+    });
+    const anchors = Array.from(temp.querySelectorAll('a'));
+    if (enablePreview) anchors.forEach(a => {
+        if (a.getAttribute('data-preview-added') === '1') return;
+        const href = a.getAttribute('href') || '';
+        try {
+            const url = new URL(href.startsWith('http') ? href : `https://${href.replace(/^mailto:|^tel:/, '')}`);
+            const host = url.hostname.toLowerCase();
+            const isYouTube = host.includes('youtube.com') || host.includes('youtu.be');
+            const isImage = /\.(png|jpe?g|gif|webp|avif)(\?.*)?$/i.test(url.pathname);
+            const isSocial = host.includes('twitter.com') || host.includes('x.com') || host.includes('instagram.com') || host.includes('instagr.am');
+            if (isYouTube) {
+                let vid = '';
+                if (host.includes('youtu.be')) {
+                    vid = url.pathname.split('/').filter(Boolean)[0] || '';
+                } else {
+                    vid = url.searchParams.get('v') || '';
+                    if (!vid && url.pathname.includes('/embed/')) {
+                        vid = url.pathname.split('/').pop() || '';
+                    }
+                }
+                if (vid && vid.length === 11) {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'yt-embed my-2 rounded-lg overflow-hidden shadow-lg';
+                    wrapper.style.aspectRatio = '16 / 9';
+                    wrapper.setAttribute('data-video-id', vid);
+                    wrapper.setAttribute('onclick', '__yt_embed(this)');
+                    const thumb = `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
+                    wrapper.innerHTML = `<div class="relative w-full h-full bg-black"><img src="${thumb}" alt="" class="w-full h-full object-cover opacity-80"><div class="absolute inset-0 flex items-center justify-center"><div class="bg-red-600 rounded-full w-16 h-16 flex items-center justify-center shadow-lg"><span class="text-white text-2xl">▶</span></div></div></div>`;
+                    a.insertAdjacentElement('afterend', wrapper);
+                    a.setAttribute('data-preview-added', '1');
+                }
+            } else if (isImage) {
+                const img = document.createElement('img');
+                img.src = href;
+                img.loading = 'lazy';
+                img.className = 'max-w-full h-auto rounded-lg shadow-md my-2';
+                a.insertAdjacentElement('afterend', img);
+                a.setAttribute('data-preview-added', '1');
+            } else if (isSocial) {
+                const card = document.createElement('div');
+                card.className = 'my-2 rounded-lg border border-gray-700 bg-gray-900/40 p-3';
+                card.innerHTML = `<div class="text-xs text-gray-400">${host}</div><div class="text-sm text-white truncate">${a.textContent}</div>`;
+                a.insertAdjacentElement('afterend', card);
+                a.setAttribute('data-preview-added', '1');
+            } else {
+                const proxy = window.LINK_PREVIEW_PROXY || null;
+                if (proxy) {
+                    const card = document.createElement('div');
+                    card.className = 'my-2 rounded-lg border border-gray-700 bg-gray-900/40 p-3';
+                    card.innerHTML = `<div class="text-xs text-gray-400">${host}</div><div class="text-sm text-white truncate">${a.textContent}</div>`;
+                    a.insertAdjacentElement('afterend', card);
+                    a.setAttribute('data-preview-added', '1');
+                    try {
+                        fetch(`${proxy}?url=${encodeURIComponent(url.href)}`, { mode: 'cors' })
+                            .then(res => res.ok ? res.json() : null)
+                            .then(meta => {
+                                if (!meta) return;
+                                const title = meta.title || a.textContent;
+                                const desc = meta.description || '';
+                                const image = meta.image || '';
+                                const imgHtml = image ? `<img src="${image}" alt="" class="w-full h-32 object-cover rounded-lg mb-2">` : '';
+                                card.innerHTML = `${imgHtml}<div class="text-sm text-white font-bold">${title}</div>${desc ? `<div class="text-xs text-gray-400 mt-1 line-clamp-2">${desc}</div>` : ''}<div class="text-[11px] text-gray-500 mt-1">${host}</div>`;
+                            }).catch(() => {});
+                    } catch {}
+                }
+            }
+        } catch {}
+    });
+    return temp.innerHTML;
+}
+window.__yt_embed = function(el) {
+    if (!el || el.dataset.embedded === '1') return;
+    const vid = el.getAttribute('data-video-id') || '';
+    if (!vid) return;
+    const iframe = document.createElement('iframe');
+    iframe.src = `https://www.youtube.com/embed/${vid}?autoplay=1`;
+    iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+    iframe.style.width = '100%';
+    iframe.style.height = '100%';
+    iframe.className = 'rounded-lg';
+    iframe.frameBorder = '0';
+    iframe.allowFullscreen = true;
+    el.innerHTML = '';
+    el.appendChild(iframe);
+    el.dataset.embedded = '1';
+};
+window.updatePreviewSetting = function() {
+    const chk = document.getElementById('preview-enabled');
+    const val = !!chk?.checked;
+    state.previewEnabled = val;
+    try { localStorage.setItem('preview_enabled', JSON.stringify(val)); } catch {}
+    showToast(val ? '자동 프리뷰를 켰소.' : '자동 프리뷰를 껐소.', 'success');
+};
 // ------------------------------------------------------------------
 // 3. 인증 (Auth)
 // ------------------------------------------------------------------
@@ -459,7 +612,8 @@ async function savePost() {
     if (state.user && state.profile?.is_banned) return showToast('관문 출입 금지 상태이오.', 'error');
 
     const title = document.getElementById('new-post-title').value;
-    const contentHTML = document.getElementById('new-post-content').innerHTML.trim();
+    const contentHTMLRaw = document.getElementById('new-post-content').innerHTML.trim();
+    const contentHTML = linkifyHtml(contentHTMLRaw, false);
 
     if (!title || !contentHTML) return showToast('제목과 내용을 채우시오.', 'error');
 
@@ -586,6 +740,8 @@ function navigate(viewId, pushHistory = true) {
     if (viewId === 'secret-inn') renderPosts('posts-list-secret', 'secret');
     if (viewId === 'chat-hall') loadChat();
     if (viewId === 'my-page') renderMyPage();
+    if (viewId === 'ranking') { renderRanking(); renderPredictionLeaderboard(); }
+    if (viewId === 'guild-detail') renderGuildDetail(state.currentStockName);
 }
 
 // ------------------------------------------------------------------
@@ -635,6 +791,14 @@ async function renderMyPage() {
         document.getElementById('noti-comment').checked = profile.receive_comment_noti ?? true;
         document.getElementById('noti-like').checked = profile.receive_like_noti ?? true;
         document.getElementById('noti-message').checked = profile.receive_message_noti ?? true;
+        const previewChk = document.getElementById('preview-enabled');
+        if (previewChk) previewChk.checked = state.previewEnabled;
+        const proxyInput = document.getElementById('proxy-url-input');
+        if (proxyInput) {
+            try {
+                proxyInput.value = localStorage.getItem('link_preview_proxy') || '';
+            } catch { proxyInput.value = ''; }
+        }
         
         const level = calculateLevel(profile.post_count, profile.comment_count);
         const badge = document.getElementById('my-level-badge');
@@ -673,6 +837,19 @@ async function renderMyPage() {
         const { data: posts } = await client.from('posts').select('like_count').eq('user_id', state.user.id);
         const totalLikes = posts ? posts.reduce((sum, p) => sum + (p.like_count || 0), 0) : 0;
         document.getElementById('stat-likes').innerText = totalLikes;
+        try {
+            const { data: guilds } = await client.from('guild_memberships').select('stock_id').eq('user_id', state.user.id).limit(10);
+            const box = document.getElementById('my-guild-badges');
+            if (box) {
+                box.innerHTML = '';
+                (guilds || []).forEach(g => {
+                    const el = document.createElement('span');
+                    el.className = 'px-2 py-1 rounded-full text-[11px] bg-gray-800 border border-gray-700 text-yellow-400';
+                    el.textContent = g.stock_id;
+                    box.appendChild(el);
+                });
+            }
+        } catch {}
     }
 
     // 2. Default Tab: My Posts
@@ -1016,7 +1193,7 @@ async function loadMyActivity() {
         const when = new Date(i.d).toLocaleString();
         const label = i.t === 'comment' ? '전서' : '명성';
         const postTitle = i.post ? i.post.title : '';
-        el.innerHTML = `<div class="flex justify-between items-center mb-1"><span class="text-xs text-gray-400">${label}</span><span class="text-[10px] text-gray-500">${when}</span></div><div class="text-sm text-white">${postTitle}</div>${i.t === 'comment' ? `<div class="text-xs text-gray-400 mt-1">${i.text}</div>` : ''}`;
+        el.innerHTML = `<div class="flex justify-between items-center mb-1"><span class="text-xs text-gray-400">${label}</span><span class="text-[10px] text-gray-500">${when}</span></div><div class="text-sm text-white">${postTitle}</div>${i.t === 'comment' ? `<div class="text-xs text-gray-400 mt-1">${linkifyHtml(i.text)}</div>` : ''}`;
         list.appendChild(el);
     });
 }
@@ -1062,7 +1239,7 @@ async function loadMyActivity(type) {
         const when = new Date(i.d).toLocaleString();
         const label = i.t === 'comment' ? '전서' : '명성';
         const postTitle = i.post ? i.post.title : '';
-        el.innerHTML = `<div class="flex justify-between items-center mb-1"><span class="text-xs text-gray-400">${label}</span><span class="text-[10px] text-gray-500">${when}</span></div><div class="text-sm text-white">${postTitle}</div>${i.t === 'comment' ? `<div class="text-xs text-gray-400 mt-1">${i.text}</div>` : ''}`;
+        el.innerHTML = `<div class="flex justify-between items-center mb-1"><span class="text-xs text-gray-400">${label}</span><span class="text-[10px] text-gray-500">${when}</span></div><div class="text-sm text-white">${postTitle}</div>${i.t === 'comment' ? `<div class="text-xs text-gray-400 mt-1">${linkifyHtml(i.text)}</div>` : ''}`;
         list.appendChild(el);
     });
 }
@@ -1167,9 +1344,10 @@ function createPostElement(post) {
     postEl.dataset.postId = post.id;
     postEl.onclick = () => openPostDetail(post);
 
+    const badge = post.type === 'stock' && getGuildMembership(post.stock_id) ? '<span class="ml-2 px-2 py-0.5 rounded-full text-[10px] bg-yellow-900/40 text-yellow-400 border border-yellow-700/40">문파</span>' : '';
     postEl.innerHTML = `
         <div class="flex justify-between items-start mb-2">
-            <h4 class="text-white font-semibold truncate text-base flex-1">${post.title}</h4>
+            <h4 class="text-white font-semibold truncate text-base flex-1">${post.title}${badge}</h4>
             ${!isSecret ? `<span class="text-[10px] text-gray-500 ml-2 bg-gray-800 px-2 py-1 rounded flex items-center gap-1">👁 ${post.view_count || 0} ❤️ ${post.like_count || 0}</span>` : ''}
         </div>
         <div class="text-xs text-gray-400 flex justify-between items-center">
@@ -1412,7 +1590,7 @@ window.openPostDetail = async function(post) {
     const titleEl = document.getElementById('detail-title');
     if (titleEl) titleEl.innerText = post.title;
     const contentEl = document.getElementById('detail-content');
-    if (contentEl) contentEl.innerHTML = post.content;
+    if (contentEl) contentEl.innerHTML = linkifyHtml(post.content);
     
     const author = post.profiles?.nickname || post.guest_nickname || '익명 무협객';
     const authorEl = document.getElementById('detail-author');
@@ -1467,6 +1645,256 @@ window.openPostDetail = async function(post) {
     }
 }
 
+async function renderRanking() {
+    const guildList = document.getElementById('guild-ranking-list');
+    const guildMemberList = document.getElementById('guild-member-ranking-list');
+    const bestList = document.getElementById('best-posts-list');
+    if (guildList) guildList.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">문파 랭킹을 계산 중...</div>';
+    if (guildMemberList) guildMemberList.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">가입자 랭킹을 계산 중...</div>';
+    if (bestList) bestList.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">베스트 비급을 불러오는 중...</div>';
+    if (state.stockTags.length === 0) await fetchStockTags();
+    const tags = [...state.stockTags];
+    const counts = await Promise.all(tags.map(async name => {
+        const { count } = await client.from('posts')
+            .select('*', { count: 'exact', head: true })
+            .eq('type', 'stock')
+            .eq('stock_id', name);
+        return { name, count: count || 0 };
+    }));
+    counts.sort((a, b) => b.count - a.count);
+    if (guildList) {
+        guildList.innerHTML = '';
+        counts.slice(0, 10).forEach(({ name, count }, idx) => {
+            const el = document.createElement('div');
+            el.className = 'p-3 rounded-xl border border-gray-800 bg-[#1C1C1E] flex items-center justify-between';
+            el.innerHTML = `<div class="flex items-center gap-2"><span class="text-xs text-gray-500">${idx + 1}</span><span class="text-sm text-white font-bold">${name}</span></div><div class="text-xs text-yellow-400">비급 ${count}</div>`;
+            el.onclick = () => { state.currentStockName = name; navigate('guild-detail'); };
+            guildList.appendChild(el);
+        });
+        if (guildList.childElementCount === 0) guildList.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">등록된 문파가 없소.</div>';
+    }
+    if (guildMemberList) {
+        const memCounts = await Promise.all(tags.map(async name => {
+            try {
+                const { count } = await client.from('guild_memberships')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('stock_id', name);
+                return { name, count: count || 0 };
+            } catch { return { name, count: 0 }; }
+        }));
+        memCounts.sort((a, b) => b.count - a.count);
+        guildMemberList.innerHTML = '';
+        memCounts.slice(0, 10).forEach(({ name, count }, idx) => {
+            const el = document.createElement('div');
+            el.className = 'p-3 rounded-xl border border-gray-800 bg-[#1C1C1E] flex items-center justify-between';
+            el.innerHTML = `<div class="flex items-center gap-2"><span class="text-xs text-gray-500">${idx + 1}</span><span class="text-sm text-white font-bold">${name}</span></div><div class="text-xs text-yellow-400">가입자 ${count}</div>`;
+            el.onclick = () => { state.currentStockName = name; navigate('guild-detail'); };
+            guildMemberList.appendChild(el);
+        });
+        if (guildMemberList.childElementCount === 0) guildMemberList.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">등록된 문파가 없소.</div>';
+    }
+    const { data: posts } = await client.from('posts')
+        .select(`*, profiles:user_id (nickname, post_count, comment_count)`)
+        .neq('type', 'secret')
+        .order('like_count', { ascending: false })
+        .limit(10);
+    if (bestList) {
+        bestList.innerHTML = '';
+        (posts || []).forEach(post => {
+            const el = document.createElement('div');
+            el.className = 'p-3 rounded-xl border border-gray-800 bg-[#1C1C1E] hover:bg-gray-800 transition cursor-pointer';
+            const like = post.like_count || 0;
+            const stock = post.type === 'stock' ? ` · ${post.stock_id}` : '';
+            el.innerHTML = `<div class="flex justify-between items-center mb-1"><span class="text-sm text-white truncate">${post.title}${stock}</span><span class="text-xs text-yellow-400">♥ ${like}</span></div><div class="text-[11px] text-gray-500">${new Date(post.created_at).toLocaleDateString()}</div>`;
+            el.onclick = () => openPostDetail(post);
+            bestList.appendChild(el);
+        });
+        if (bestList.childElementCount === 0) bestList.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">비급이 없소.</div>';
+    }
+}
+
+async function renderGuildDetail(name) {
+    const titleEl = document.getElementById('guild-detail-title');
+    if (titleEl) titleEl.textContent = `문파 상세 — ${name}`;
+    const btn = document.getElementById('guild-join-btn');
+    const joined = getGuildMembership(name);
+    if (btn) btn.textContent = joined ? '탈퇴' : '가입';
+    try {
+        const { count } = await client.from('guild_memberships').select('*', { count: 'exact', head: true }).eq('stock_id', name);
+        const cEl = document.getElementById('guild-member-count');
+        if (cEl) cEl.textContent = String(count || 0);
+    } catch {}
+    const posts = await fetchPosts('stock', name);
+    const list = document.getElementById('guild-posts');
+    if (list) {
+        list.innerHTML = '';
+        (posts || []).forEach(p => list.appendChild(createPostElement(p)));
+        if (!list.childElementCount) list.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">비급이 없소.</div>';
+    }
+    const { data: topPosts } = await client.from('posts')
+        .select(`*, profiles:user_id (nickname, post_count, comment_count)`)
+        .eq('type', 'stock')
+        .eq('stock_id', name)
+        .order('like_count', { ascending: false })
+        .limit(10);
+    const lb = document.getElementById('guild-leaderboard');
+    if (lb) {
+        lb.innerHTML = '';
+        (topPosts || []).forEach(post => {
+            const el = document.createElement('div');
+            el.className = 'p-3 rounded-xl border border-gray-800 bg-[#1C1C1E] flex items-center justify-between';
+            el.innerHTML = `<div class="text-sm text-white truncate">${post.title}</div><div class="text-xs text-yellow-400">♥ ${post.like_count || 0}</div>`;
+            lb.appendChild(el);
+        });
+        if (!lb.childElementCount) lb.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">리더보드가 비었소.</div>';
+    }
+}
+function getGuildMembershipKey() {
+    return `guild_memberships_${state.user?.id || 'guest'}`;
+}
+function getGuildMembership(name) {
+    try {
+        const raw = localStorage.getItem(getGuildMembershipKey());
+        const obj = raw ? JSON.parse(raw) : {};
+        return !!obj[name];
+    } catch { return false; }
+}
+window.toggleGuildMembership = async function() {
+    const name = state.currentStockName;
+    const key = getGuildMembershipKey();
+    let obj = {};
+    try {
+        obj = JSON.parse(localStorage.getItem(key) || '{}');
+    } catch {}
+    const joined = !!obj[name];
+    obj[name] = !joined;
+    try { localStorage.setItem(key, JSON.stringify(obj)); } catch {}
+    const btn = document.getElementById('guild-join-btn');
+    if (btn) btn.textContent = obj[name] ? '탈퇴' : '가입';
+    showToast(obj[name] ? `문파 [${name}]에 가입했소.` : `문파 [${name}]에서 탈퇴했소.`, 'success');
+    try {
+        if (state.user) {
+            if (obj[name]) {
+                await client.from('guild_memberships').insert({ user_id: state.user.id, stock_id: name });
+            } else {
+                await client.from('guild_memberships').delete().match({ user_id: state.user.id, stock_id: name });
+            }
+        }
+    } catch {}
+}
+
+function currentMonthKey() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+}
+function getLocalPredictions(month) {
+    try {
+        const raw = localStorage.getItem(`predictions_${month}`);
+        return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+}
+function saveLocalPrediction(month, rec) {
+    const list = getLocalPredictions(month);
+    list.push(rec);
+    try { localStorage.setItem(`predictions_${month}`, JSON.stringify(list)); } catch {}
+}
+window.submitPrediction = async function() {
+    const stockInput = document.getElementById('prediction-stock');
+    const name = (stockInput?.value || '').trim();
+    const dir = (document.querySelector('input[name="prediction-dir"]:checked')?.value) || 'up';
+    if (!name) return showToast('종목을 선택하시오.', 'error');
+    const rec = { user_id: state.user?.id || null, stock_id: name, direction: dir, created_at: new Date().toISOString() };
+    let ok = false;
+    try {
+        const { error } = await client.from('predictions').insert(rec);
+        ok = !error;
+    } catch { ok = false; }
+    if (!ok) {
+        saveLocalPrediction(currentMonthKey(), rec);
+    }
+    showToast('예측에 참여했소.', 'success');
+    renderPredictionLeaderboard();
+}
+async function renderPredictionLeaderboard() {
+    const container = document.getElementById('prediction-leaderboard');
+    if (!container) return;
+    container.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">집계 중...</div>';
+    const month = currentMonthKey();
+    let list = [];
+    try {
+        const { data, error } = await client.from('predictions_monthly')
+            .select('*')
+            .eq('month', month);
+        const rows = error ? [] : (data || []);
+        list = rows.map(r => ({
+            name: r.stock_id,
+            total: (r.up || 0) + (r.down || 0),
+            score: (r.up || 0) - (r.down || 0),
+            up: r.up || 0,
+            down: r.down || 0
+        })).sort((a, b) => b.score - a.score || b.total - a.total).slice(0, 10);
+    } catch {
+        const rows = getLocalPredictions(month);
+        const agg = {};
+        rows.forEach(r => {
+            const k = r.stock_id;
+            if (!agg[k]) agg[k] = { up: 0, down: 0 };
+            agg[k][r.direction === 'down' ? 'down' : 'up']++;
+        });
+        list = Object.entries(agg).map(([name, v]) => {
+            const total = v.up + v.down;
+            const score = v.up - v.down;
+            return { name, total, score, up: v.up, down: v.down };
+        }).sort((a, b) => b.score - a.score || b.total - a.total).slice(0, 10);
+    }
+    container.innerHTML = '';
+    list.forEach((it, idx) => {
+        const el = document.createElement('div');
+        el.className = 'p-3 rounded-xl border border-gray-800 bg-[#1C1C1E] flex items-center justify-between';
+        el.innerHTML = `<div class="flex items-center gap-2"><span class="text-xs text-gray-500">${idx + 1}</span><span class="text-sm text-white font-bold">${it.name}</span></div><div class="text-xs"><span class="text-green-400 mr-2">상 ${it.up}</span><span class="text-red-400">하 ${it.down}</span></div>`;
+        container.appendChild(el);
+    });
+    if (!container.childElementCount) container.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">참여 내역이 없소.</div>';
+}
+
+window.switchGuildRankingTab = function(type) {
+    const postsBtn = document.getElementById('btn-rank-by-posts');
+    const membersBtn = document.getElementById('btn-rank-by-members');
+    const postsList = document.getElementById('guild-ranking-list');
+    const membersList = document.getElementById('guild-member-ranking-list');
+    if (!postsBtn || !membersBtn || !postsList || !membersList) return;
+    if (type === 'members') {
+        membersBtn.classList.add('border-yellow-600','text-yellow-400');
+        postsBtn.classList.remove('border-yellow-600','text-yellow-400');
+        membersList.classList.remove('hidden');
+        postsList.classList.add('hidden');
+    } else {
+        postsBtn.classList.add('border-yellow-600','text-yellow-400');
+        membersBtn.classList.remove('border-yellow-600','text-yellow-400');
+        postsList.classList.remove('hidden');
+        membersList.classList.add('hidden');
+    }
+}
+
+window.updateProxySetting = function() {
+    const input = document.getElementById('proxy-url-input');
+    const url = (input?.value || '').trim();
+    try {
+        if (url) {
+            localStorage.setItem('link_preview_proxy', url);
+            window.LINK_PREVIEW_PROXY = url;
+            showToast('프록시를 기록했소.', 'success');
+        } else {
+            localStorage.removeItem('link_preview_proxy');
+            window.LINK_PREVIEW_PROXY = null;
+            showToast('프록시를 제거했소.', 'success');
+        }
+    } catch {
+        showToast('프록시 기록에 실패했소.', 'error');
+    }
+}
 window.toggleLike = async function() {
     if (!state.user) return showToast('명성(좋아요) 표시는 입문 후 가능하오.', 'error');
     if (state.postToEdit.type === 'secret') return; 
@@ -1568,7 +1996,7 @@ function createCommentNode(comment, allChildren, depth = 0) {
             </span>
             <span>${new Date(comment.created_at).toLocaleTimeString()}</span>
         </p>
-        <p class="text-xs text-gray-200">${comment.content}</p>
+        <p class="text-xs text-gray-200">${linkifyHtml(comment.content)}</p>
         <div class="flex items-center gap-2 mt-1">
             <button onclick="setReplyTarget('${comment.id}', '${author}')" class="text-[10px] text-gray-500 hover:text-gray-300">↪ 답글</button>
             ${(state.profile?.role === 'admin' || (state.user && state.user.id === comment.user_id)) ? 
@@ -1693,7 +2121,7 @@ function renderChat(messages) {
     const author = msg.profiles?.nickname || msg.guest_nickname || '익명 무협객';
         const msgEl = document.createElement('div');
         msgEl.className = 'text-xs mb-1';
-        msgEl.innerHTML = `<span class="text-yellow-400 font-medium">${author}:</span> <span class="text-gray-300">${msg.content}</span>`;
+        msgEl.innerHTML = `<span class="text-yellow-400 font-medium">${author}:</span> <span class="text-gray-300">${linkifyHtml(msg.content)}</span>`;
         fragment.appendChild(msgEl);
     });
     chatList.appendChild(fragment);
@@ -1795,7 +2223,7 @@ async function loadMessageList() {
                 <span class="font-bold text-sm ${msg.is_read ? 'text-gray-400' : 'text-yellow-400'}">${sender}</span>
                 <span class="text-xs text-gray-500">${date}</span>
             </div>
-            <p class="text-sm text-gray-300 truncate">${msg.content}</p>
+            <p class="text-sm text-gray-300 truncate">${linkifyHtml(msg.content)}</p>
         `;
         fragment.appendChild(el);
     });
@@ -1825,7 +2253,7 @@ window.viewMessage = async function(msg) {
                     <span class="font-bold text-white">${sender}</span>
                     <span class="text-xs text-gray-500">${new Date(msg.created_at).toLocaleString()}</span>
                 </div>
-                <div class="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">${msg.content}</div>
+                <div class="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">${linkifyHtml(msg.content)}</div>
             </div>
             <button onclick="openMessageCompose('${msg.sender_id}', '${sender}')" class="self-end bg-yellow-600 text-black font-bold px-4 py-2 rounded-lg text-sm hover:bg-yellow-500">답장하기</button>
         </div>
@@ -2107,6 +2535,26 @@ function setupGlobalRealtime() {
                 renderStockTabs();
                 renderStockOptions();
                 showToast(`📈 새로운 종목 [${payload.new.name}]이(가) 등재되었소!`, 'info');
+            })
+            .subscribe()
+    );
+    
+    ensureChannel('global_guilds', () =>
+        client.channel('public:guild_memberships')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'guild_memberships' }, payload => {
+                const viewId = document.querySelector('.app-view:not(.hidden)')?.id || '';
+                if (viewId === 'ranking') renderRanking();
+                if (viewId === 'guild-detail') renderGuildDetail(state.currentStockName);
+                if (viewId === 'my-page') renderMyPage();
+            })
+            .subscribe()
+    );
+    
+    ensureChannel('global_predictions', () =>
+        client.channel('public:predictions')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'predictions' }, payload => {
+                const viewId = document.querySelector('.app-view:not(.hidden)')?.id || '';
+                if (viewId === 'ranking') renderPredictionLeaderboard();
             })
             .subscribe()
     );
@@ -2473,7 +2921,7 @@ async function loadNotifications() {
 
     list.innerHTML = data.map(noti => `
         <div class="bg-gray-800/50 p-3 rounded-lg border-l-4 ${noti.is_read ? 'border-gray-600 opacity-60' : 'border-yellow-500'}">
-            <p class="text-xs text-gray-300 mb-1">${noti.content}</p>
+            <p class="text-xs text-gray-300 mb-1">${linkifyHtml(noti.content)}</p>
             <div class="flex justify-between items-center">
                 <span class="text-[10px] text-gray-500">${new Date(noti.created_at).toLocaleString()}</span>
                 ${noti.link ? `<button onclick="handleNotificationClick('${noti.link}', '${noti.id}')" class="text-[10px] bg-gray-700 px-2 py-1 rounded hover:bg-gray-600">이동</button>` : ''}

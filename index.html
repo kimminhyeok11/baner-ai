@@ -74,6 +74,69 @@
             </div>
             <div class="space-y-4" id="posts-list-secret"></div>
         </div>
+        <div id="ranking" class="app-view hidden">
+            <h2 class="text-2xl font-bold text-white mb-6">강호 순위</h2>
+            <div class="space-y-6">
+                <div class="flex items-center gap-2">
+                    <button id="btn-rank-by-posts" onclick="switchGuildRankingTab('posts')" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">비급 수</button>
+                    <button id="btn-rank-by-members" onclick="switchGuildRankingTab('members')" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">가입자 수</button>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-400 mb-2">문파 랭킹 (종목별 비급 수)</div>
+                    <div id="guild-ranking-list" class="space-y-2"></div>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-400 mb-2">문파 랭킹 (가입자 수)</div>
+                    <div id="guild-member-ranking-list" class="space-y-2"></div>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-400 mb-2">베스트 비급 (명성 순)</div>
+                    <div id="best-posts-list" class="space-y-2"></div>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-400 mb-2">예측 챌린지 (월간)</div>
+                    <div class="p-3 rounded-xl border border-gray-800 bg-[#1C1C1E] space-y-3">
+                        <div class="flex items-center gap-2">
+                            <input id="prediction-stock" list="stock-options" class="flex-1 bg-black border border-gray-700 text-white text-xs rounded px-2 py-1" placeholder="종목 선택">
+                            <div class="flex items-center gap-2">
+                                <label class="text-xs flex items-center gap-1">
+                                    <input type="radio" name="prediction-dir" value="up" class="accent-yellow-500" checked>
+                                    <span>상승</span>
+                                </label>
+                                <label class="text-xs flex items-center gap-1">
+                                    <input type="radio" name="prediction-dir" value="down" class="accent-yellow-500">
+                                    <span>하락</span>
+                                </label>
+                            </div>
+                            <button onclick="submitPrediction()" class="text-xs bg-yellow-600 text-black px-3 py-1.5 rounded hover:bg-yellow-500">참여</button>
+                        </div>
+                        <div class="text-[11px] text-gray-500">당월 집계로 순위를 산정하오.</div>
+                    </div>
+                    <div class="mt-3">
+                        <div class="text-xs text-gray-400 mb-2">월간 리더보드</div>
+                        <div id="prediction-leaderboard" class="space-y-2"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="guild-detail" class="app-view hidden">
+            <div class="flex items-center justify-between mb-4">
+                <h2 id="guild-detail-title" class="text-2xl font-bold text-white">문파 상세</h2>
+                <button id="guild-join-btn" onclick="toggleGuildMembership()" class="text-xs bg-gray-800 text-gray-300 px-3 py-1.5 rounded hover:bg-gray-700">가입</button>
+            </div>
+            <div class="mb-3 text-xs text-gray-400">가입자 <span id="guild-member-count" class="text-yellow-400">0</span>명</div>
+            <div class="space-y-6">
+                <div>
+                    <div class="text-xs text-gray-400 mb-2">문파 비급</div>
+                    <div id="guild-posts" class="space-y-2"></div>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-400 mb-2">문파 리더보드 (명성 순)</div>
+                    <div id="guild-leaderboard" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
         
         <!-- My Page View -->
         <div id="my-page" class="app-view hidden">
@@ -106,6 +169,10 @@
                         <div class="text-xs text-gray-500 mb-1">명성(추천)</div>
                         <div id="stat-likes" class="text-lg font-bold text-yellow-500">0</div>
                     </div>
+                </div>
+                <div class="mt-3">
+                    <div class="text-xs text-gray-400 mb-1">문파 배지</div>
+                    <div id="my-guild-badges" class="flex flex-wrap gap-2 justify-center"></div>
                 </div>
             </div>
             
@@ -158,16 +225,16 @@
             <div id="my-settings-area" class="hidden space-y-6 p-2">
                  <div>
                      <h4 class="text-sm font-bold text-gray-400 mb-3">문파 깃발 (배너)</h4>
-                    <div class="flex items-center gap-2">
-                        <input id="banner-input" type="file" accept="image/*" class="flex-grow bg-black border border-gray-700 rounded-xl px-3 py-2 text-white">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <input id="banner-input" type="file" accept="image/*" class="flex-1 min-w-0 bg-black border border-gray-700 rounded-xl px-3 py-2 text-white">
                         <button onclick="updateBanner()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">교체</button>
                         <button onclick="removeBanner()" class="bg-red-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-700 border border-red-900">제거</button>
                     </div>
                 </div>
                 <div>
                     <h4 class="text-sm font-bold text-gray-400 mb-3">용모 (프로필)</h4>
-                    <div class="flex items-center gap-2">
-                        <input id="avatar-input" type="file" accept="image/*" class="flex-grow bg-black border border-gray-700 rounded-xl px-3 py-2 text-white">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <input id="avatar-input" type="file" accept="image/*" class="flex-1 min-w-0 bg-black border border-gray-700 rounded-xl px-3 py-2 text-white">
                         <button onclick="updateAvatar()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">교체</button>
                         <button onclick="removeAvatar()" class="bg-red-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-700 border border-red-900">제거</button>
                     </div>
@@ -203,6 +270,25 @@
                         <button onclick="updateNotificationSettings()" class="w-full bg-gray-800 text-white py-3 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">설정 기록</button>
                     </div>
                  </div>
+                <div>
+                    <h4 class="text-sm font-bold text-gray-400 mb-3">미디어 프리뷰</h4>
+                    <div class="flex items-center gap-2">
+                        <label class="flex items-center gap-2 text-xs bg-[#1C1C1E] border border-gray-800 rounded-xl px-3 py-2">
+                            <input id="preview-enabled" type="checkbox" class="accent-yellow-500">
+                            <span class="text-gray-300">자동 프리뷰 사용 (YouTube·이미지·카드)</span>
+                        </label>
+                        <button onclick="updatePreviewSetting()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">적용</button>
+                    </div>
+                    <p class="text-[11px] text-gray-500 mt-1">프록시가 설정된 경우 도메인 카드에 제목/설명 표시.</p>
+                </div>
+                <div>
+                    <h4 class="text-sm font-bold text-gray-400 mb-3">링크 카드 프록시</h4>
+                    <div class="flex items-center gap-2">
+                        <input id="proxy-url-input" type="text" class="flex-grow bg-black border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-yellow-500 outline-none" placeholder="예: https://your-proxy.example/meta">
+                        <button onclick="updateProxySetting()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">기록</button>
+                    </div>
+                    <p class="text-[11px] text-gray-500 mt-1">서버에서 Open Graph 메타를 추출하는 주소를 기입하시오.</p>
+                </div>
                 <div>
                     <h4 class="text-sm font-bold text-gray-400 mb-3">호(닉네임) 개명</h4>
                     <div class="flex gap-2">
@@ -255,6 +341,7 @@
             <button onclick="navigate('stock-board')" class="nav-btn flex-1 py-3 text-sm font-medium">비급</button>
             <button onclick="navigate('chat-hall')" class="nav-btn flex-1 py-3 text-sm font-medium">전음</button>
             <button onclick="navigate('secret-inn')" class="nav-btn flex-1 py-3 text-sm font-medium">객잔</button>
+            <button onclick="navigate('ranking')" class="nav-btn flex-1 py-3 text-sm font-medium">순위</button>
             <button onclick="navigate('my-page')" id="nav-my-page" class="hidden nav-btn flex-1 py-3 text-sm font-medium">본거지</button>
         </div>
     </nav>
@@ -434,10 +521,10 @@
             </div>
 
             <div class="p-3 bg-[#1C1C1E] border-t border-gray-800">
-                <div id="comments-list" class="max-h-48 overflow-y-auto mb-3 space-y-3 scroll-hidden"></div>
+                <div id="comments-list" class="max-h-[45vh] overflow-y-auto mb-3 space-y-3 scroll-hidden"></div>
                 <div class="relative">
-                    <input id="comment-input" type="text" placeholder="전서(댓글)를 남기시오..." onkeydown="if(event.key==='Enter') addComment()" class="w-full bg-gray-900 border border-gray-700 rounded-full px-4 py-3 text-sm text-white pr-12 focus:border-gray-500 focus:outline-none transition">
-                    <button onclick="addComment()" class="absolute right-2 top-1/2 transform -translate-y-1/2 bg-gray-700 text-white p-1.5 rounded-full hover:bg-gray-600">
+                    <textarea id="comment-input" placeholder="전서(댓글)를 남기시오... (Ctrl+Enter 전송)" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)) addComment()" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white pr-12 focus:border-gray-500 focus:outline-none transition resize-y min-h-[44px]"></textarea>
+                    <button onclick="addComment()" class="absolute right-2 top-2 bg-gray-700 text-white p-1.5 rounded-full hover:bg-gray-600">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                     </button>
                 </div>

@@ -1,5 +1,5 @@
 Param(
-    [string]$SiteUrl = "https://example.com",
+    [string]$SiteUrl = "https://baner-ai.vercel.app",
     [string]$OutputDir = "."
 )
 
