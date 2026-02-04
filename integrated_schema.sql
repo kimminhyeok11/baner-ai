@@ -1,9 +1,8 @@
 -- 통합된 데이터베이스 스키마 (Integrated Database Schema)
 -- 기존의 migration_full.sql, migration_messages.sql, fix_relationships.sql을 통합하고 최적화했습니다.
 
--- 1. Profiles Table (User Profiles)
 -- auth.users와 1:1 관계를 가집니다.
-create table public.profiles (
+create table if not exists public.profiles (
   id uuid references auth.users not null primary key,
   nickname text,
   role text default 'user', -- 'user' or 'admin' (운영 관리를 위해 추가)
@@ -32,13 +31,13 @@ begin
 end;
 $$ language plpgsql security definer;
 
+drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
 
--- 2. Stock Tags Table (For Stock Board)
-create table public.stock_tags (
+create table if not exists public.stock_tags (
   id uuid default gen_random_uuid() primary key,
   name text unique not null,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
@@ -55,9 +54,8 @@ create policy "Authenticated users can insert stock tags"
   with check ( auth.role() = 'authenticated' );
 
 
--- 3. Posts Table
 -- profiles 테이블을 참조하도록 수정됨 (JOIN 최적화)
-create table public.posts (
+create table if not exists public.posts (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references public.profiles(id) on delete cascade, -- auth.users 대신 profiles 참조
   guest_nickname text, -- For anonymous posts
@@ -90,8 +88,7 @@ create policy "Users can delete own posts"
   using ( auth.uid() = user_id );
 
 
--- 4. Comments Table
-create table public.comments (
+create table if not exists public.comments (
   id uuid default gen_random_uuid() primary key,
   post_id uuid references public.posts on delete cascade not null,
   user_id uuid references public.profiles(id) on delete cascade, -- profiles 참조
@@ -112,8 +109,7 @@ create policy "Users can insert comments"
   with check ( true );
 
 
--- 5. Chat Messages Table
-create table public.chat_messages (
+create table if not exists public.chat_messages (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references public.profiles(id) on delete cascade, -- profiles 참조
   guest_nickname text,
@@ -132,8 +128,7 @@ create policy "Everyone can insert chat"
   with check ( true );
 
 
--- 6. Messages Table (Direct Messages / Note)
-create table public.messages (
+create table if not exists public.messages (
   id uuid default gen_random_uuid() primary key,
   sender_id uuid references public.profiles(id) on delete cascade not null, -- profiles 참조
   receiver_id uuid references public.profiles(id) on delete cascade not null, -- profiles 참조
