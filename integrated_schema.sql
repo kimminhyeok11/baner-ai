@@ -343,11 +343,20 @@ create policy "Admins can delete any post"
   on public.posts for delete
   using ( auth.uid() in (select id from public.profiles where role = 'admin') );
 
+drop policy if exists "Users can delete own post" on public.posts;
+create policy "Users can delete own post"
+  on public.posts for delete
+  using ( auth.uid() = user_id );
+
 drop policy if exists "Admins can delete any comment" on public.comments;
 create policy "Admins can delete any comment"
   on public.comments for delete
   using ( auth.uid() in (select id from public.profiles where role = 'admin') );
 
+drop policy if exists "Users can delete own comment" on public.comments;
+create policy "Users can delete own comment"
+  on public.comments for delete
+  using ( auth.uid() = user_id );
 create or replace function public.handle_new_like()
 returns trigger as $$
 declare
