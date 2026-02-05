@@ -517,7 +517,7 @@ create policy "Predictions are viewable by everyone"
   using ( true );
 create policy "Users can insert predictions"
   on public.predictions for insert
-  with check ( auth.role() = 'authenticated' OR user_id is null );
+  with check ( auth.role() = 'authenticated' );
 create policy "Users can update own predictions"
   on public.predictions for update
   using ( auth.uid() = user_id );
@@ -526,3 +526,16 @@ create policy "Users can delete own predictions"
   using ( auth.uid() = user_id );
 create index if not exists idx_predictions_created on public.predictions(created_at);
 create index if not exists idx_predictions_stock_dir on public.predictions(stock_id, direction);
+create unique index if not exists uniq_predictions_user_stock_month 
+  on public.predictions (user_id, stock_id, date_trunc('month', created_at));
+create index if not exists idx_posts_type_created on public.posts(type, created_at);
+create index if not exists idx_posts_stock_created on public.posts(type, stock_id, created_at);
+create index if not exists idx_posts_stock_like on public.posts(type, stock_id, like_count);
+create index if not exists idx_comments_post_created on public.comments(post_id, created_at);
+create index if not exists idx_comments_user_created on public.comments(user_id, created_at);
+create index if not exists idx_post_likes_user_created on public.post_likes(user_id, created_at);
+create index if not exists idx_post_likes_post_created on public.post_likes(post_id, created_at);
+create index if not exists idx_notifications_user_created on public.notifications(user_id, created_at);
+create index if not exists idx_notifications_user_type_created on public.notifications(user_id, type, created_at);
+create index if not exists idx_messages_receiver_created on public.messages(receiver_id, created_at);
+create index if not exists idx_messages_sender_created on public.messages(sender_id, created_at);

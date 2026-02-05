@@ -32,7 +32,8 @@ const state = {
         mutes: new Set()
     },
     currentTargetUserId: null,
-    submitLocks: {}
+    submitLocks: {},
+    activityFilter: { keyword: '', days: 30 }
 };
 
 try {
@@ -85,13 +86,37 @@ function showToast(message, type = 'info') {
 
 function calculateLevel(postCount, commentCount) {
     const score = (postCount || 0) + (commentCount || 0);
-    const idx = Math.min(Math.floor(score / 10), LEVEL_NAMES.length - 1);
+    const thresholds = [0, 3, 7, 12, 18, 26, 36, 50, 70, 95, 130];
+    let idx = 0;
+    for (let i = 0; i < thresholds.length; i++) {
+        if (score >= thresholds[i]) idx = i;
+        else break;
+    }
+    idx = Math.min(idx, LEVEL_NAMES.length - 1);
     return { name: LEVEL_NAMES[idx], color: idx > 5 ? 'text-yellow-400' : 'text-cyan-400' };
 }
 
+function sanitizeHTML(input) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = input || '';
+    tmp.querySelectorAll('script, style, iframe, object, embed, link').forEach(n => n.remove());
+    const walker = document.createTreeWalker(tmp, NodeFilter.SHOW_ELEMENT, null);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(el => {
+        Array.from(el.attributes).forEach(attr => {
+            const n = attr.name.toLowerCase();
+            const v = attr.value || '';
+            if (n.startsWith('on')) el.removeAttribute(attr.name);
+            if ((n === 'href' || n === 'src') && /^\s*javascript:/i.test(v)) el.removeAttribute(attr.name);
+            if ((n === 'href' || n === 'src') && /^\s*data:/i.test(v) && !/^\s*data:image\//i.test(v)) el.removeAttribute(attr.name);
+        });
+    });
+    return tmp.innerHTML;
+}
 function linkifyHtml(html, enablePreview = state.previewEnabled) {
     const temp = document.createElement('div');
-    temp.innerHTML = html || '';
+    temp.innerHTML = sanitizeHTML(html || '');
     const regex = /(https?:\/\/[^\s<]+|www\.[^\s<]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|\b(?:0(?:2|1\d|[3-6]\d))[-.\s]?\d{3,4}[-.\s]?\d{4}\b|\b(?!https?:\/\/|www\.)[a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s<]*)?)/gi;
     const walker = document.createTreeWalker(temp, NodeFilter.SHOW_TEXT, null);
     const texts = [];
@@ -206,6 +231,11 @@ function linkifyHtml(html, enablePreview = state.previewEnabled) {
         } catch {}
     });
     return temp.innerHTML;
+}
+const BAD_WORDS = ['욕설1','욕설2','비속어1','비속어2'];
+function containsBadWords(text) {
+    const t = (text || '').toLowerCase();
+    return BAD_WORDS.some(w => t.includes(w.toLowerCase()));
 }
 function runLocked(key, fn) {
     if (state.submitLocks[key]) return;
@@ -632,6 +662,7 @@ async function savePost() {
     const contentHTML = linkifyHtml(contentHTMLRaw, false);
 
     if (!title || !contentHTML) return showToast('제목과 내용을 채우시오.', 'error');
+    if (containsBadWords(title) || containsBadWords(contentHTMLRaw)) return showToast('금칙어가 포함되었소.', 'error');
 
     let stockName = null;
     if (type === 'stock') {
@@ -722,8 +753,7 @@ window.deletePost = async function(postId) {
                 console.warn('비급 첨부 이미지 삭제 실패:', e);
             }
         }
-        closeModal('postDetailModal');
-        navigate(document.querySelector('.app-view:not(.hidden)').id);
+        navigate('gangho-plaza');
     }
 }
 
@@ -754,10 +784,7 @@ function navigate(viewId, pushHistory = true) {
         else renderPosts('posts-list-stock', 'stock', state.currentStockName);
     }
     if (viewId === 'secret-inn') renderPosts('posts-list-secret', 'secret');
-    if (viewId === 'chat-hall') loadChat();
     if (viewId === 'my-page') renderMyPage();
-    if (viewId === 'ranking') { renderRanking(); renderPredictionLeaderboard(); }
-    if (viewId === 'guild-detail') renderGuildDetail(state.currentStockName);
 }
 
 // ------------------------------------------------------------------
@@ -994,11 +1021,14 @@ async function loadMyNotifications() {
     list.innerHTML = '';
     data.forEach(noti => {
         const el = document.createElement('div');
-        el.className = `bg-gray-800/50 p-3 rounded-lg border-l-4 ${noti.is_read ? 'border-gray-600 opacity-60' : 'border-yellow-500'}`;
+        const t = noti.type || 'other';
+        const icon = t === 'comment' ? '💬' : t === 'like' ? '❤️' : t === 'message' ? '✉️' : '🔔';
+        const cls = noti.is_read ? 'border-gray-600 opacity-60' : (t === 'comment' ? 'border-blue-500' : t === 'like' ? 'border-red-500' : t === 'message' ? 'border-green-500' : 'border-yellow-500');
+        el.className = `bg-gray-800/50 p-3 rounded-lg border-l-4 ${cls}`;
         const when = new Date(noti.created_at).toLocaleString();
         const jump = noti.link ? `<button onclick="handleNotificationClick('${noti.link}', '${noti.id}')" class="text-[10px] bg-gray-700 px-2 py-1 rounded hover:bg-gray-600 mr-2">이동</button>` : '';
         const del = `<button onclick="deleteNotification('${noti.id}')" class="text-[10px] text-red-500">파기</button>`;
-        el.innerHTML = `<p class="text-xs text-gray-300 mb-1">${noti.content}</p><div class="flex justify-between items-center"><span class="text-[10px] text-gray-500">${when}</span><div class="flex items-center">${jump}${del}</div></div>`;
+        el.innerHTML = `<p class="text-xs text-gray-300 mb-1"><span class="mr-2">${icon}</span>${linkifyHtml(noti.content)}</p><div class="flex justify-between items-center"><span class="text-[10px] text-gray-500">${when}</span><div class="flex items-center">${jump}${del}</div></div>`;
         list.appendChild(el);
     });
 }
@@ -1185,12 +1215,12 @@ async function loadMyActivity() {
     const list = document.getElementById('activity-list');
     list.innerHTML = '<div class="text-center text-gray-500 py-6">행적을 찾는 중...</div>';
     const { data: myComments } = await client.from('comments')
-        .select('content, created_at, post_id, posts:post_id (title, type)')
+        .select('content, created_at, post_id, posts:post_id (id, title, type)')
         .eq('user_id', state.user.id)
         .order('created_at', { ascending: false })
         .limit(20);
     const { data: myLikes } = await client.from('post_likes')
-        .select('created_at, post_id, posts:post_id (title, type)')
+        .select('created_at, post_id, posts:post_id (id, title, type)')
         .eq('user_id', state.user.id)
         .order('created_at', { ascending: false })
         .limit(20);
@@ -1205,11 +1235,16 @@ async function loadMyActivity() {
     }
     items.forEach(i => {
         const el = document.createElement('div');
-        el.className = 'p-3 rounded-xl bg-[#1C1C1E] border border-gray-800';
+        el.className = 'p-3 rounded-xl bg-[#1C1C1E] border border-gray-800 cursor-pointer';
         const when = new Date(i.d).toLocaleString();
         const label = i.t === 'comment' ? '전서' : '명성';
         const postTitle = i.post ? i.post.title : '';
         el.innerHTML = `<div class="flex justify-between items-center mb-1"><span class="text-xs text-gray-400">${label}</span><span class="text-[10px] text-gray-500">${when}</span></div><div class="text-sm text-white">${postTitle}</div>${i.t === 'comment' ? `<div class="text-xs text-gray-400 mt-1">${linkifyHtml(i.text)}</div>` : ''}`;
+        el.onclick = async () => {
+            if (!i.post || !i.post.id) return;
+            const { data } = await client.from('posts').select(`*, profiles:user_id (nickname)`).eq('id', i.post.id).single();
+            if (data) openPostDetail(data);
+        };
         list.appendChild(el);
     });
 }
@@ -1231,33 +1266,69 @@ window.switchActivityFilter = function(type) {
 async function loadMyActivity(type) {
     const list = document.getElementById('activity-list');
     list.innerHTML = '';
+    const days = parseInt(state.activityFilter.days || 30, 10);
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const cutoffISO = cutoff.toISOString();
     const { data: myComments } = await client.from('comments')
-        .select('content, created_at, post_id, posts:post_id (title, type)')
+        .select('id, content, created_at, post_id, posts:post_id (id, title, type)')
         .eq('user_id', state.user.id)
+        .gte('created_at', cutoffISO)
         .order('created_at', { ascending: false })
         .limit(20);
     const { data: myLikes } = await client.from('post_likes')
-        .select('created_at, post_id, posts:post_id (title, type)')
+        .select('created_at, post_id, posts:post_id (id, title, type)')
         .eq('user_id', state.user.id)
+        .gte('created_at', cutoffISO)
         .order('created_at', { ascending: false })
         .limit(20);
     const items = [];
-    if (type === 'all' || type === 'comment') (myComments || []).forEach(c => items.push({ t: 'comment', d: c.created_at, text: c.content, post: c.posts }));
+    if (type === 'all' || type === 'comment') (myComments || []).forEach(c => items.push({ t: 'comment', d: c.created_at, text: c.content, post: c.posts, cid: c.id }));
     if (type === 'all' || type === 'like') (myLikes || []).forEach(l => items.push({ t: 'like', d: l.created_at, text: '', post: l.posts }));
     items.sort((a, b) => new Date(b.d) - new Date(a.d));
-    if (items.length === 0) {
+    const keyword = (state.activityFilter.keyword || '').toLowerCase();
+    const filtered = items.filter(i => {
+        const dateOk = new Date(i.d) >= cutoff;
+        if (!dateOk) return false;
+        if (!keyword) return true;
+        const title = (i.post?.title || '').toLowerCase();
+        const text = (i.text || '').toLowerCase();
+        return title.includes(keyword) || text.includes(keyword);
+    });
+    if (filtered.length === 0) {
         list.innerHTML = '<div class="text-center text-gray-500 py-10">최근 행적이 없소.</div>';
         return;
     }
-    items.forEach(i => {
+    filtered.forEach(i => {
         const el = document.createElement('div');
-        el.className = 'p-3 rounded-xl bg-[#1C1C1E] border border-gray-800';
+        el.className = 'p-3 rounded-xl bg-[#1C1C1E] border border-gray-800 cursor-pointer';
         const when = new Date(i.d).toLocaleString();
         const label = i.t === 'comment' ? '전서' : '명성';
         const postTitle = i.post ? i.post.title : '';
         el.innerHTML = `<div class="flex justify-between items-center mb-1"><span class="text-xs text-gray-400">${label}</span><span class="text-[10px] text-gray-500">${when}</span></div><div class="text-sm text-white">${postTitle}</div>${i.t === 'comment' ? `<div class="text-xs text-gray-400 mt-1">${linkifyHtml(i.text)}</div>` : ''}`;
+        el.onclick = async () => {
+            if (!i.post || !i.post.id) return;
+            const { data } = await client.from('posts').select(`*, profiles:user_id (nickname)`).eq('id', i.post.id).single();
+            if (data) {
+                openPostDetail(data);
+                if (i.t === 'comment' && i.cid) {
+                    scrollToComment(`comment-${i.cid}`);
+                }
+            }
+        };
         list.appendChild(el);
     });
+}
+window.setActivityKeyword = function(v) {
+    state.activityFilter.keyword = v || '';
+    const active = document.querySelector('#my-activity-area .border-yellow-600')?.id || 'act-filter-all';
+    const type = active.replace('act-filter-','');
+    loadMyActivity(type);
+}
+window.setActivityDays = function(v) {
+    state.activityFilter.days = parseInt(v || '30', 10);
+    const active = document.querySelector('#my-activity-area .border-yellow-600')?.id || 'act-filter-all';
+    const type = active.replace('act-filter-','');
+    loadMyActivity(type);
 }
 
 async function unlikePostFromBookmarks(postId) {
@@ -1594,7 +1665,7 @@ function renderLoadMoreButton(container, type, stockName) {
 window.openPostDetail = async function(post) {
     state.currentPostId = post.id;
     state.postToEdit = post;
-    const modal = document.getElementById('postDetailModal');
+    navigate('post-detail');
     
     if (post.type !== 'secret') {
         const newViewCount = (post.view_count || 0) + 1;
@@ -1617,13 +1688,7 @@ window.openPostDetail = async function(post) {
     if (likesEl) likesEl.innerText = post.like_count || 0;
 
     const metaContainer = document.getElementById('detail-meta-container');
-    if (metaContainer) {
-        if (post.type === 'secret') {
-            metaContainer.classList.add('hidden');
-        } else {
-            metaContainer.classList.remove('hidden');
-        }
-    }
+    if (metaContainer) metaContainer.classList.toggle('hidden', post.type === 'secret');
     
     const isAuthor = state.user?.id === post.user_id;
     const isAdmin = state.profile?.role === 'admin';
@@ -1642,6 +1707,25 @@ window.openPostDetail = async function(post) {
         msgBtn.classList.toggle('hidden', !canSendMsg);
         msgBtn.onclick = () => openMessageCompose(post.user_id, author);
     }
+    const shareBtn = document.getElementById('btn-share-link');
+    if (shareBtn) {
+        shareBtn.onclick = async () => {
+            const url = `${window.location.origin}${window.location.pathname}#post-${post.id}`;
+            try {
+                await navigator.clipboard.writeText(url);
+                showToast('링크를 복사했소.', 'success');
+            } catch {
+                const tmp = document.createElement('input');
+                tmp.value = url;
+                document.body.appendChild(tmp);
+                tmp.select();
+                document.execCommand('copy');
+                document.body.removeChild(tmp);
+                showToast('링크를 복사했소.', 'success');
+            }
+        };
+    }
+    await loadComments(post.id);
     
     if (delBtn) {
         delBtn.onclick = () => {
@@ -2004,6 +2088,7 @@ function createCommentNode(comment, allChildren, depth = 0) {
     const commentEl = document.createElement('div');
     commentEl.className = `p-2 rounded-lg ${depth > 0 ? 'bg-gray-800/50 border-l-2 border-gray-600' : 'bg-gray-700/50'} relative`;
     commentEl.style.marginLeft = `${margin}px`;
+    commentEl.id = `comment-${comment.id}`;
     const deviceId = getGuestDeviceId();
     const canDelete = (state.profile?.role === 'admin') || (state.user && state.user.id === comment.user_id) || (!comment.user_id && comment.guest_device_id && comment.guest_device_id === deviceId);
     
@@ -2029,6 +2114,22 @@ function createCommentNode(comment, allChildren, depth = 0) {
     });
 
     return wrapper;
+}
+function scrollToComment(domId) {
+    let tries = 0;
+    const maxTries = 30;
+    const tick = setInterval(() => {
+        const el = document.getElementById(domId);
+        tries++;
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.classList.add('ring-2','ring-yellow-500');
+            setTimeout(() => { el.classList.remove('ring-2','ring-yellow-500'); }, 2000);
+            clearInterval(tick);
+        } else if (tries >= maxTries) {
+            clearInterval(tick);
+        }
+    }, 100);
 }
 
 window.setReplyTarget = function(commentId, authorName) {
@@ -2059,6 +2160,7 @@ async function addComment() {
     const input = document.getElementById('comment-input');
     const content = input.value.trim();
     if (!content || !postId) return;
+    if (containsBadWords(content)) return showToast('금칙어가 포함되었소.', 'error');
     if (state.user && state.profile?.is_banned) return showToast('관문 출입 금지 상태이오.', 'error');
 
     if (!state.user) {
@@ -2561,26 +2663,6 @@ function setupGlobalRealtime() {
             })
             .subscribe()
     );
-    
-    ensureChannel('global_guilds', () =>
-        client.channel('public:guild_memberships')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'guild_memberships' }, payload => {
-                const viewId = document.querySelector('.app-view:not(.hidden)')?.id || '';
-                if (viewId === 'ranking') renderRanking();
-                if (viewId === 'guild-detail') renderGuildDetail(state.currentStockName);
-                if (viewId === 'my-page') renderMyPage();
-            })
-            .subscribe()
-    );
-    
-    ensureChannel('global_predictions', () =>
-        client.channel('public:predictions')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'predictions' }, payload => {
-                const viewId = document.querySelector('.app-view:not(.hidden)')?.id || '';
-                if (viewId === 'ranking') renderPredictionLeaderboard();
-            })
-            .subscribe()
-    );
 }
 
 // ------------------------------------------------------------------
@@ -2599,6 +2681,17 @@ function setupEditorSelectionTracking() {
     ['keyup','mouseup','input','focus'].forEach(ev => editor.addEventListener(ev, saveRange));
     editor.addEventListener('blur', saveRange);
 }
+window.captureEditorSelection = function() {
+    const editor = document.getElementById('new-post-content');
+    if (!editor) return;
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        if (editor.contains(range.startContainer)) {
+            editorSelectionRange = range;
+        }
+    }
+};
 function insertHtmlAtSelection(html) {
     const editor = document.getElementById('new-post-content');
     if (!editor) return;
@@ -2942,15 +3035,17 @@ async function loadNotifications() {
         return;
     }
 
-    list.innerHTML = data.map(noti => `
-        <div class="bg-gray-800/50 p-3 rounded-lg border-l-4 ${noti.is_read ? 'border-gray-600 opacity-60' : 'border-yellow-500'}">
-            <p class="text-xs text-gray-300 mb-1">${linkifyHtml(noti.content)}</p>
-            <div class="flex justify-between items-center">
-                <span class="text-[10px] text-gray-500">${new Date(noti.created_at).toLocaleString()}</span>
-                ${noti.link ? `<button onclick="handleNotificationClick('${noti.link}', '${noti.id}')" class="text-[10px] bg-gray-700 px-2 py-1 rounded hover:bg-gray-600">이동</button>` : ''}
-            </div>
-        </div>
-    `).join('');
+    list.innerHTML = data.map(noti => {
+        const t = noti.type || 'other';
+        const icon = t === 'comment' ? '💬' : t === 'like' ? '❤️' : t === 'message' ? '✉️' : '🔔';
+        const cls = t === 'comment' ? 'border-blue-500' : t === 'like' ? 'border-red-500' : t === 'message' ? 'border-green-500' : 'border-yellow-500';
+        const when = new Date(noti.created_at).toLocaleString();
+        const btn = noti.link ? `<button onclick="handleNotificationClick('${noti.link}', '${noti.id}')" class="text-[10px] bg-gray-700 px-2 py-1 rounded hover:bg-gray-600">이동</button>` : '';
+        return `<div class="bg-gray-800/50 p-3 rounded-lg border-l-4 ${noti.is_read ? 'border-gray-600 opacity-60' : cls}">
+            <p class="text-xs text-gray-300 mb-1"><span class="mr-2">${icon}</span>${linkifyHtml(noti.content)}</p>
+            <div class="flex justify-between items-center"><span class="text-[10px] text-gray-500">${when}</span>${btn}</div>
+        </div>`;
+    }).join('');
     const modal = document.getElementById('notificationModal');
     if (modal) {
         modal.onmouseenter = cancelNotificationAutoClose;
