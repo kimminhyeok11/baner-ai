@@ -96,6 +96,18 @@ create table if not exists public.reports (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 alter table public.reports enable row level security;
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'reports'
+      and column_name = 'status'
+  ) then
+    alter table public.reports add column status text default 'pending';
+  end if;
+end $$;
 
 drop policy if exists "Admins can view reports" on public.reports;
 create policy "Admins can view reports"
@@ -133,6 +145,11 @@ create policy "Users can view own notifications"
 drop policy if exists "Users can update own notifications" on public.notifications;
 create policy "Users can update own notifications"
   on notifications for update
+  using ( auth.uid() = user_id );
+  
+drop policy if exists "Users can delete own notifications" on public.notifications;
+create policy "Users can delete own notifications"
+  on notifications for delete
   using ( auth.uid() = user_id );
   
 drop policy if exists "Admins can insert notifications" on public.notifications;

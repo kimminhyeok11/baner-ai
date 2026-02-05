@@ -31,7 +31,8 @@ const state = {
         blocks: new Set(),
         mutes: new Set()
     },
-    currentTargetUserId: null
+    currentTargetUserId: null,
+    submitLocks: {}
 };
 
 try {
@@ -205,6 +206,21 @@ function linkifyHtml(html, enablePreview = state.previewEnabled) {
         } catch {}
     });
     return temp.innerHTML;
+}
+function runLocked(key, fn) {
+    if (state.submitLocks[key]) return;
+    state.submitLocks[key] = true;
+    const done = () => { state.submitLocks[key] = false; };
+    try {
+        const r = fn();
+        if (r && typeof r.then === 'function') {
+            r.then(done).catch(done);
+        } else {
+            done();
+        }
+    } catch {
+        done();
+    }
 }
 window.__yt_embed = function(el) {
     if (!el || el.dataset.embedded === '1') return;
@@ -1801,21 +1817,23 @@ function saveLocalPrediction(month, rec) {
     try { localStorage.setItem(`predictions_${month}`, JSON.stringify(list)); } catch {}
 }
 window.submitPrediction = async function() {
-    const stockInput = document.getElementById('prediction-stock');
-    const name = (stockInput?.value || '').trim();
-    const dir = (document.querySelector('input[name="prediction-dir"]:checked')?.value) || 'up';
-    if (!name) return showToast('종목을 선택하시오.', 'error');
-    const rec = { user_id: state.user?.id || null, stock_id: name, direction: dir, created_at: new Date().toISOString() };
-    let ok = false;
-    try {
-        const { error } = await client.from('predictions').insert(rec);
-        ok = !error;
-    } catch { ok = false; }
-    if (!ok) {
-        saveLocalPrediction(currentMonthKey(), rec);
-    }
-    showToast('예측에 참여했소.', 'success');
-    renderPredictionLeaderboard();
+    runLocked('submitPrediction', async () => {
+        const stockInput = document.getElementById('prediction-stock');
+        const name = (stockInput?.value || '').trim();
+        const dir = (document.querySelector('input[name="prediction-dir"]:checked')?.value) || 'up';
+        if (!name) return showToast('종목을 선택하시오.', 'error');
+        const rec = { user_id: state.user?.id || null, stock_id: name, direction: dir, created_at: new Date().toISOString() };
+        let ok = false;
+        try {
+            const { error } = await client.from('predictions').insert(rec);
+            ok = !error;
+        } catch { ok = false; }
+        if (!ok) {
+            saveLocalPrediction(currentMonthKey(), rec);
+        }
+        showToast('예측에 참여했소.', 'success');
+        renderPredictionLeaderboard();
+    });
 }
 async function renderPredictionLeaderboard() {
     const container = document.getElementById('prediction-leaderboard');
@@ -1897,34 +1915,24 @@ window.updateProxySetting = function() {
 }
 window.toggleLike = async function() {
     if (!state.user) return showToast('명성(좋아요) 표시는 입문 후 가능하오.', 'error');
-    if (state.postToEdit.type === 'secret') return; 
-
-    // Optimistic UI update
-    const isLiked = state.likedPostIds.has(state.currentPostId);
-    const newLikeCount = (state.postToEdit.like_count || 0) + (isLiked ? -1 : 1);
-    
-    document.getElementById('detail-likes').innerText = newLikeCount;
-    state.postToEdit.like_count = newLikeCount;
-    
-    // Toggle Set
-    if (isLiked) state.likedPostIds.delete(state.currentPostId);
-    else state.likedPostIds.add(state.currentPostId);
-
-    let error;
-    if (isLiked) {
-        // Unlike
-        ({ error } = await client.from('post_likes').delete().eq('post_id', state.currentPostId).eq('user_id', state.user.id));
-    } else {
-        // Like
-        ({ error } = await client.from('post_likes').insert({ post_id: state.currentPostId, user_id: state.user.id }));
-    }
-    
-    if (error) {
-        showToast('처리에 차질이 생겼소.', 'error');
-        // Revert logic could be added here
-    } else {
-        // showToast(isLiked ? '추천을 취소했습니다.' : '비급을 추천했습니다.', 'success');
-    }
+    if (state.postToEdit.type === 'secret') return;
+    runLocked('toggleLike', async () => {
+        const isLiked = state.likedPostIds.has(state.currentPostId);
+        const newLikeCount = (state.postToEdit.like_count || 0) + (isLiked ? -1 : 1);
+        document.getElementById('detail-likes').innerText = newLikeCount;
+        state.postToEdit.like_count = newLikeCount;
+        if (isLiked) state.likedPostIds.delete(state.currentPostId);
+        else state.likedPostIds.add(state.currentPostId);
+        let error;
+        if (isLiked) {
+            ({ error } = await client.from('post_likes').delete().eq('post_id', state.currentPostId).eq('user_id', state.user.id));
+        } else {
+            ({ error } = await client.from('post_likes').insert({ post_id: state.currentPostId, user_id: state.user.id }));
+        }
+        if (error) {
+            showToast('처리에 차질이 생겼소.', 'error');
+        }
+    });
 }
 
 window.openPostEditModal = function(post) {
@@ -2143,12 +2151,14 @@ function renderChat(messages) {
 }
 
 async function sendChat() {
-    const input = document.getElementById('chat-input');
-    const content = input.value.trim();
-    if (!content) return;
-    const payload = { content: content, user_id: state.user?.id || null, guest_nickname: state.user ? null : state.guestName };
-    const { error } = await client.from('chat_messages').insert(payload);
-    if (!error) input.value = '';
+    runLocked('sendChat', async () => {
+        const input = document.getElementById('chat-input');
+        const content = input.value.trim();
+        if (!content) return;
+        const payload = { content: content, user_id: state.user?.id || null, guest_nickname: state.user ? null : state.guestName };
+        const { error } = await client.from('chat_messages').insert(payload);
+        if (!error) input.value = '';
+    });
 }
 
 function setupRealtimeChat() {
@@ -2303,26 +2313,25 @@ window.cancelMessage = function() {
 }
 
 window.submitMessage = async function() {
-    const receiverId = document.getElementById('msg-receiver-name').dataset.id;
-    const content = document.getElementById('msg-content').value.trim();
-    
-    if (!content) {
-        showToast('내용을 채우시오.', 'error');
-        return;
-    }
-    
-    const { error } = await client.from('messages').insert({
-        sender_id: state.user.id,
-        receiver_id: receiverId,
-        content: content
+    runLocked('submitMessage', async () => {
+        const receiverId = document.getElementById('msg-receiver-name').dataset.id;
+        const content = document.getElementById('msg-content').value.trim();
+        if (!content) {
+            showToast('내용을 채우시오.', 'error');
+            return;
+        }
+        const { error } = await client.from('messages').insert({
+            sender_id: state.user.id,
+            receiver_id: receiverId,
+            content: content
+        });
+        if (error) {
+            showToast('발송 불발: ' + error.message, 'error');
+        } else {
+            showToast('밀서를 보냈소.', 'success');
+            cancelMessage();
+        }
     });
-    
-    if (error) {
-        showToast('발송 불발: ' + error.message, 'error');
-    } else {
-        showToast('밀서를 보냈소.', 'success');
-        cancelMessage(); // 목록으로 복귀
-    }
 }
 
 // ------------------------------------------------------------------

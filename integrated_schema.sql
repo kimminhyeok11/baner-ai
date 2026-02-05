@@ -13,10 +13,12 @@ create table if not exists public.profiles (
 
 alter table public.profiles enable row level security;
 
+drop policy if exists "Public profiles are viewable by everyone" on public.profiles;
 create policy "Public profiles are viewable by everyone"
   on profiles for select
   using ( true );
-
+ 
+drop policy if exists "Users can update own profile" on public.profiles;
 create policy "Users can update own profile"
   on profiles for update
   using ( auth.uid() = id );
@@ -45,10 +47,12 @@ create table if not exists public.stock_tags (
 
 alter table public.stock_tags enable row level security;
 
+drop policy if exists "Stock tags are viewable by everyone" on public.stock_tags;
 create policy "Stock tags are viewable by everyone"
   on stock_tags for select
   using ( true );
 
+drop policy if exists "Authenticated users can insert stock tags" on public.stock_tags;
 create policy "Authenticated users can insert stock tags"
   on stock_tags for insert
   with check ( auth.role() = 'authenticated' );
@@ -71,18 +75,22 @@ create table if not exists public.posts (
 
 alter table public.posts enable row level security;
 
+drop policy if exists "Posts are viewable by everyone" on public.posts;
 create policy "Posts are viewable by everyone"
   on posts for select
   using ( true );
 
+drop policy if exists "Users can insert posts" on public.posts;
 create policy "Users can insert posts"
   on posts for insert
   with check ( true ); 
 
+drop policy if exists "Users can update own posts" on public.posts;
 create policy "Users can update own posts"
   on posts for update
   using ( auth.uid() = user_id );
 
+drop policy if exists "Users can delete own posts" on public.posts;
 create policy "Users can delete own posts"
   on posts for delete
   using ( auth.uid() = user_id );
@@ -101,10 +109,12 @@ create table if not exists public.comments (
 
 alter table public.comments enable row level security;
 
+drop policy if exists "Comments are viewable by everyone" on public.comments;
 create policy "Comments are viewable by everyone"
   on comments for select
   using ( true );
 
+drop policy if exists "Users can insert comments" on public.comments;
 create policy "Users can insert comments"
   on comments for insert
   with check ( true );
@@ -120,10 +130,12 @@ create table if not exists public.chat_messages (
 
 alter table public.chat_messages enable row level security;
 
+drop policy if exists "Chat is viewable by everyone" on public.chat_messages;
 create policy "Chat is viewable by everyone"
   on chat_messages for select
   using ( true );
 
+drop policy if exists "Everyone can insert chat" on public.chat_messages;
 create policy "Everyone can insert chat"
   on chat_messages for insert
   with check ( true );
@@ -140,14 +152,17 @@ create table if not exists public.messages (
 
 alter table public.messages enable row level security;
 
+drop policy if exists "Users can view their own messages" on public.messages;
 create policy "Users can view their own messages"
   on messages for select
   using ( auth.uid() = sender_id or auth.uid() = receiver_id );
 
+drop policy if exists "Users can send messages" on public.messages;
 create policy "Users can send messages"
   on messages for insert
   with check ( auth.uid() = sender_id );
 
+drop policy if exists "Receivers can update read status" on public.messages;
 create policy "Receivers can update read status"
   on messages for update
   using ( auth.uid() = receiver_id );
@@ -169,10 +184,12 @@ alter publication supabase_realtime add table public.stock_tags;
 
 -- 8. Storage Policies (Standard Template)
 -- 'images' 버킷이 존재해야 합니다.
+drop policy if exists "Public Access" on storage.objects;
 create policy "Public Access"
   on storage.objects for select
   using ( bucket_id = 'images' );
 
+drop policy if exists "Authenticated Upload" on storage.objects;
 create policy "Authenticated Upload"
   on storage.objects for insert
   with check ( bucket_id = 'images' and auth.role() = 'authenticated' );
@@ -265,6 +282,18 @@ create table if not exists public.reports (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 alter table public.reports enable row level security;
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'reports'
+      and column_name = 'status'
+  ) then
+    alter table public.reports add column status text default 'pending';
+  end if;
+end $$;
 
 drop policy if exists "Admins can view reports" on public.reports;
 create policy "Admins can view reports"
@@ -300,6 +329,11 @@ create policy "Users can view own notifications"
 drop policy if exists "Users can update own notifications" on public.notifications;
 create policy "Users can update own notifications"
   on notifications for update
+  using ( auth.uid() = user_id );
+  
+drop policy if exists "Users can delete own notifications" on public.notifications;
+create policy "Users can delete own notifications"
+  on notifications for delete
   using ( auth.uid() = user_id );
   
 drop policy if exists "Admins can insert notifications" on public.notifications;
