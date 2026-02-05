@@ -1976,6 +1976,15 @@ function renderComments(roots, children) {
     list.appendChild(fragment);
 }
 
+function getGuestDeviceId() {
+    let id = localStorage.getItem('guest_device_id');
+    if (!id) {
+        id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('g-' + Math.random().toString(36).slice(2));
+        localStorage.setItem('guest_device_id', id);
+    }
+    return id;
+}
+
 function createCommentNode(comment, allChildren, depth = 0) {
     const author = comment.profiles?.nickname || comment.guest_nickname || '익명 무협객';
     const level = comment.profiles ? calculateLevel(comment.profiles.post_count, comment.profiles.comment_count) : { name: '입문자', color: 'text-gray-500' };
@@ -1987,6 +1996,8 @@ function createCommentNode(comment, allChildren, depth = 0) {
     const commentEl = document.createElement('div');
     commentEl.className = `p-2 rounded-lg ${depth > 0 ? 'bg-gray-800/50 border-l-2 border-gray-600' : 'bg-gray-700/50'} relative`;
     commentEl.style.marginLeft = `${margin}px`;
+    const deviceId = getGuestDeviceId();
+    const canDelete = (state.profile?.role === 'admin') || (state.user && state.user.id === comment.user_id) || (!comment.user_id && comment.guest_device_id && comment.guest_device_id === deviceId);
     
     commentEl.innerHTML = `
         <p class="text-[10px] text-gray-400 mb-1 flex justify-between">
@@ -1999,10 +2010,7 @@ function createCommentNode(comment, allChildren, depth = 0) {
         <p class="text-xs text-gray-200">${linkifyHtml(comment.content)}</p>
         <div class="flex items-center gap-2 mt-1">
             <button onclick="setReplyTarget('${comment.id}', '${author}')" class="text-[10px] text-gray-500 hover:text-gray-300">↪ 답글</button>
-            ${(state.profile?.role === 'admin' || (state.user && state.user.id === comment.user_id)) ? 
-                `<button onclick="deleteComment('${comment.id}','${comment.user_id}')" class="text-[10px] text-red-500 hover:text-red-400">파기</button>` 
-                : ''
-            }
+            ${canDelete ? `<button onclick="deleteComment('${comment.id}','${comment.user_id || ''}')" class="text-[10px] text-red-500 hover:text-red-400">파기</button>` : ''}
         </div>
     `;
     wrapper.appendChild(commentEl);
@@ -2059,6 +2067,7 @@ async function addComment() {
         content: content,
         user_id: state.user?.id || null,
         guest_nickname: state.user ? null : `무협객(${Math.floor(Math.random()*1000)})`,
+        guest_device_id: state.user ? null : getGuestDeviceId(),
         parent_id: state.replyToCommentId || null
     };
 
@@ -2084,11 +2093,16 @@ async function addComment() {
 }
 
 window.deleteComment = async function(commentId, userId) {
-    if (!state.user) return;
     const isAdmin = state.profile?.role === 'admin';
-    const isAuthor = state.user.id === userId;
-    if (!isAdmin && !isAuthor) return showToast('파기 권한이 없소.', 'error');
-    const { error } = await client.from('comments').delete().eq('id', commentId);
+    const isAuthor = state.user && (state.user.id === userId);
+    if (isAdmin || isAuthor) {
+        const { error } = await client.from('comments').delete().eq('id', commentId);
+        if (error) showToast('파기 중 문제가 생겼소.', 'error');
+        else showToast('전서를 파기했소.', 'success');
+        return;
+    }
+    const deviceId = getGuestDeviceId();
+    const { error } = await client.rpc('delete_guest_comment', { p_comment_id: commentId, p_device_id: deviceId });
     if (error) showToast('파기 중 문제가 생겼소.', 'error');
     else showToast('전서를 파기했소.', 'success');
 }

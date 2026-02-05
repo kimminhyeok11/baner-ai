@@ -93,6 +93,7 @@ create table if not exists public.comments (
   post_id uuid references public.posts on delete cascade not null,
   user_id uuid references public.profiles(id) on delete cascade, -- profiles 참조
   guest_nickname text,
+  guest_device_id text,
   content text not null,
   parent_id uuid references public.comments, -- For nested comments
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
@@ -352,6 +353,17 @@ drop policy if exists "Users can delete own comment" on public.comments;
 create policy "Users can delete own comment"
   on public.comments for delete
   using ( auth.uid() = user_id );
+
+drop function if exists public.delete_guest_comment(uuid, text);
+create or replace function public.delete_guest_comment(p_comment_id uuid, p_device_id text)
+returns void as $$
+begin
+  delete from public.comments
+  where id = p_comment_id
+    and user_id is null
+    and guest_device_id = p_device_id;
+end;
+$$ language plpgsql security definer;
 create or replace function public.handle_new_like()
 returns trigger as $$
 declare
