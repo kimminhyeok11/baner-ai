@@ -163,9 +163,17 @@ function linkifyHtml(html, enablePreview = state.previewEnabled) {
         node.parentNode.replaceChild(frag, node);
     });
     const anchors = Array.from(temp.querySelectorAll('a'));
+    const existingVidSet = new Set([
+        ...Array.from(temp.querySelectorAll('iframe[src*=\"youtube.com/embed/\"]')).map(ifr => {
+            const m = (ifr.getAttribute('src') || '').match(/\/embed\/([A-Za-z0-9_-]{11})/);
+            return m ? m[1] : null;
+        }).filter(Boolean),
+        ...Array.from(temp.querySelectorAll('.yt-embed[data-video-id]')).map(el => el.getAttribute('data-video-id')).filter(Boolean)
+    ]);
     if (enablePreview) anchors.forEach(a => {
         if (a.getAttribute('data-preview-added') === '1') return;
         const href = a.getAttribute('href') || '';
+        if (/^(mailto:|tel:)/i.test(href)) { a.setAttribute('data-preview-added', '1'); return; }
         try {
             const url = new URL(href.startsWith('http') ? href : `https://${href.replace(/^mailto:|^tel:/, '')}`);
             const host = url.hostname.toLowerCase();
@@ -183,6 +191,10 @@ function linkifyHtml(html, enablePreview = state.previewEnabled) {
                     }
                 }
                 if (vid && vid.length === 11) {
+                    if (existingVidSet.has(vid)) {
+                        a.setAttribute('data-preview-added', '1');
+                        return;
+                    }
                     const wrapper = document.createElement('div');
                     wrapper.className = 'yt-embed my-2 rounded-lg overflow-hidden shadow-lg';
                     wrapper.style.aspectRatio = '16 / 9';
@@ -288,7 +300,16 @@ window.updateNewsProxySetting = function() {
     const input = document.getElementById('news-proxy-input');
     const url = (input?.value || '').trim();
     try {
-        if (url) localStorage.setItem('news_proxy_url', url);
+        if (url) {
+            try {
+                const u = new URL(url);
+                if (!/^https?:$/i.test(u.protocol)) throw new Error('bad protocol');
+            } catch {
+                showToast('올바른 주소를 대시오 (http/https).', 'error');
+                return;
+            }
+            localStorage.setItem('news_proxy_url', url);
+        }
         else localStorage.removeItem('news_proxy_url');
         showToast('뉴스 프록시가 기록되었소.', 'success');
         loadNews();
@@ -307,11 +328,16 @@ async function loadNews() {
         const isSupabase = /supabase\.co\/functions\/v1\//i.test(proxy) || /functions\.supabase\.co\//i.test(proxy);
         const headers = {};
         if (isSupabase) headers['Authorization'] = `Bearer ${SUPABASE_ANON_KEY}`;
-        const bust = proxy + (proxy.includes('?') ? '&' : '?') + '_=' + Date.now();
-        const res = await fetch(bust, { mode: 'cors', headers });
+        const finalUrl = isSupabase ? proxy : (proxy + (proxy.includes('?') ? '&' : '?') + '_=' + Date.now());
+        const res = await fetch(finalUrl, { mode: 'cors', headers });
         if (!res.ok) throw new Error('network');
         const data = await res.json();
-        const items = Array.isArray(data) ? data : (data.items || []);
+        const itemsRaw = Array.isArray(data) ? data : (data.items || []);
+        const items = itemsRaw.sort((a,b)=>{
+            const ta = a.published_at ? Date.parse(a.published_at) : 0;
+            const tb = b.published_at ? Date.parse(b.published_at) : 0;
+            return tb - ta;
+        });
         if (!items.length) {
             container.innerHTML = '<div class="text-[11px] text-gray-500">표시할 뉴스가 없소.</div>';
             return;
@@ -359,11 +385,16 @@ async function loadNewsView() {
         const headers = {};
         if (isSupabase) headers['Authorization'] = `Bearer ${SUPABASE_ANON_KEY}`;
         const url = q ? `${proxy}?q=${encodeURIComponent(q)}` : proxy;
-        const bust = url + (url.includes('?') ? '&' : '?') + '_=' + Date.now();
-        const res = await fetch(bust, { mode: 'cors', headers });
+        const finalUrl = isSupabase ? url : (url + (url.includes('?') ? '&' : '?') + '_=' + Date.now());
+        const res = await fetch(finalUrl, { mode: 'cors', headers });
         if (!res.ok) throw new Error('network');
         const data = await res.json();
-        const items = Array.isArray(data) ? data : (data.items || []);
+        const itemsRaw = Array.isArray(data) ? data : (data.items || []);
+        const items = itemsRaw.sort((a,b)=>{
+            const ta = a.published_at ? Date.parse(a.published_at) : 0;
+            const tb = b.published_at ? Date.parse(b.published_at) : 0;
+            return tb - ta;
+        });
         if (!items.length) {
             list.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">표시할 뉴스가 없소.</div>';
             return;
@@ -920,6 +951,17 @@ function navigate(viewId, pushHistory = true) {
         window.history.pushState({ viewId }, null, `#${viewId}`);
     }
 
+    const footer = document.getElementById('site-footer');
+    if (footer) footer.classList.toggle('hidden', viewId === 'post-detail');
+    if (viewId !== 'post-detail') {
+        try {
+            Object.keys(state.realtimeChannels || {}).filter(k => k.startsWith('comments_')).forEach(k => {
+                client.removeChannel(state.realtimeChannels[k]);
+                delete state.realtimeChannels[k];
+            });
+        } catch {}
+    }
+
     if (miniTrendsInterval) {
         clearInterval(miniTrendsInterval);
         miniTrendsInterval = null;
@@ -942,7 +984,18 @@ function navigate(viewId, pushHistory = true) {
 
 document.addEventListener('DOMContentLoaded', () => {
     const qInput = document.getElementById('news-query-input');
-    if (qInput) qInput.addEventListener('keydown', e => { if (e.key === 'Enter') loadNewsView(); });
+    if (qInput) {
+        qInput.addEventListener('keydown', e => { if (e.key === 'Enter') loadNewsView(); });
+        let t;
+        qInput.addEventListener('input', () => {
+            clearTimeout(t);
+            t = setTimeout(() => {
+                if (document.getElementById('news-view') && !document.getElementById('news-view').classList.contains('hidden')) {
+                    loadNewsView();
+                }
+            }, 500);
+        });
+    }
 });
 // ------------------------------------------------------------------
 // 7. My Page (본거지) & Settings
@@ -2372,85 +2425,99 @@ window.openInlineReply = function(commentId, authorName) {
     input.focus();
 }
 async function submitInlineReply(parentId) {
-    const inp = document.getElementById(`inline-reply-input-${parentId}`);
-    if (!inp) return;
-    const content = inp.value.trim();
-    if (!content) return;
-    if (containsBadWords(content)) { showToast('금칙어가 포함되었소.', 'error'); return; }
-    if (state.user && state.profile?.is_banned) { showToast('관문 출입 금지 상태이오.', 'error'); return; }
-    if (!state.user) {
-        const today = new Date().toISOString().split('T')[0];
-        const count = parseInt(localStorage.getItem(`comment_count_${today}`) || '0');
-        if (count >= 10) { showToast('하루에 10개의 익명 전서만 띄울 수 있소.', 'error'); return; }
-    }
-    const payload = {
-        post_id: state.currentPostId,
-        content,
-        user_id: state.user?.id || null,
-        guest_nickname: state.user ? null : `무협객(${Math.floor(Math.random()*1000)})`,
-        guest_device_id: state.user ? null : getGuestDeviceId(),
-        parent_id: parentId,
-        created_at: new Date().toISOString()
-    };
-    const { error } = await client.from('comments').insert(payload);
-    if (error) {
-        showToast('전서 등록에 차질이 생겼소.', 'error');
-        return;
-    }
-    const box = document.getElementById(`inline-reply-${parentId}`);
-    if (box) box.remove();
-    await loadComments(state.currentPostId);
-    const domId = `comment-${parentId}`;
-    scrollToComment(domId);
+    return runLocked(`inlineReply_${parentId}`, async () => {
+        const inp = document.getElementById(`inline-reply-input-${parentId}`);
+        if (!inp) return;
+        const content = inp.value.trim();
+        if (!content) return;
+        if (containsBadWords(content)) { showToast('금칙어가 포함되었소.', 'error'); return; }
+        if (state.user && state.profile?.is_banned) { showToast('관문 출입 금지 상태이오.', 'error'); return; }
+        if (!state.user) {
+            const today = new Date().toISOString().split('T')[0];
+            const count = parseInt(localStorage.getItem(`comment_count_${today}`) || '0');
+            if (count >= 10) { showToast('하루에 10개의 익명 전서만 띄울 수 있소.', 'error'); return; }
+        }
+        const payload = {
+            post_id: state.currentPostId,
+            content,
+            user_id: (state.user?.id && state.profile?.id === state.user.id) ? state.user.id : null,
+            guest_nickname: state.user ? null : `무협객(${Math.floor(Math.random()*1000)})`,
+            guest_device_id: state.user ? null : getGuestDeviceId(),
+            parent_id: parentId
+        };
+        const { error } = await client.from('comments').insert(payload);
+        if (error) {
+            try { console.warn('인라인 답글 등록 오류:', error); } catch {}
+            const m = (error.message || '').toLowerCase();
+            if (m.includes('row level security') || m.includes('with check')) {
+                showToast('익명 전서 일일 제한을 초과했소.', 'error');
+            } else {
+                showToast(`전서 등록에 차질이 생겼소: ${error.message || '알 수 없는 오류'}`, 'error');
+            }
+            return;
+        }
+        const box = document.getElementById(`inline-reply-${parentId}`);
+        if (box) box.remove();
+        await loadComments(state.currentPostId);
+        const domId = `comment-${parentId}`;
+        scrollToComment(domId);
+    });
 }
 
 async function addComment() {
-    const postId = state.currentPostId;
-    const input = document.getElementById('comment-input');
-    const content = input.value.trim();
-    if (!content || !postId) return;
-    if (containsBadWords(content)) return showToast('금칙어가 포함되었소.', 'error');
-    if (state.user && state.profile?.is_banned) return showToast('관문 출입 금지 상태이오.', 'error');
+    return runLocked('addComment', async () => {
+        const postId = state.currentPostId;
+        const input = document.getElementById('comment-input');
+        const content = input.value.trim();
+        if (!content || !postId) return;
+        if (containsBadWords(content)) return showToast('금칙어가 포함되었소.', 'error');
+        if (state.user && state.profile?.is_banned) return showToast('관문 출입 금지 상태이오.', 'error');
 
-    if (!state.user) {
-        const today = new Date().toISOString().split('T')[0];
-        const count = parseInt(localStorage.getItem(`comment_count_${today}`) || '0');
-        if (count >= 10) {
-            showToast('하루에 10개의 익명 전서만 띄울 수 있소.', 'error');
-            return;
+        if (!state.user) {
+            const today = new Date().toISOString().split('T')[0];
+            const count = parseInt(localStorage.getItem(`comment_count_${today}`) || '0');
+            if (count >= 10) {
+                showToast('하루에 10개의 익명 전서만 띄울 수 있소.', 'error');
+                return;
+            }
         }
-    }
 
-    const payload = {
-        post_id: postId,
-        content: content,
-        user_id: state.user?.id || null,
-        guest_nickname: state.user ? null : `무협객(${Math.floor(Math.random()*1000)})`,
-        guest_device_id: state.user ? null : getGuestDeviceId(),
-        parent_id: state.replyToCommentId || null,
-        created_at: new Date().toISOString()
-    };
+        const payload = {
+            post_id: postId,
+            content: content,
+            user_id: (state.user?.id && state.profile?.id === state.user.id) ? state.user.id : null,
+            guest_nickname: state.user ? null : `무협객(${Math.floor(Math.random()*1000)})`,
+            guest_device_id: state.user ? null : getGuestDeviceId(),
+            parent_id: state.replyToCommentId || null
+        };
 
     const { error } = await client.from('comments').insert(payload);
     if (error) {
-        showToast('전서 등록에 차질이 생겼소.', 'error');
+        try { console.warn('댓글 등록 오류:', error); } catch {}
+        const m = (error.message || '').toLowerCase();
+        if (m.includes('row level security') || m.includes('with check')) {
+            showToast('익명 전서 일일 제한을 초과했소.', 'error');
+        } else {
+            showToast(`전서 등록에 차질이 생겼소: ${error.message || '알 수 없는 오류'}`, 'error');
+        }
         return;
     } else {
-        input.value = '';
-        
-        if (!state.user) {
-            const today = new Date().toISOString().split('T')[0];
-            const currentCount = parseInt(localStorage.getItem(`comment_count_${today}`) || '0');
-            localStorage.setItem(`comment_count_${today}`, currentCount + 1);
-        }
+            input.value = '';
+            
+            if (!state.user) {
+                const today = new Date().toISOString().split('T')[0];
+                const currentCount = parseInt(localStorage.getItem(`comment_count_${today}`) || '0');
+                localStorage.setItem(`comment_count_${today}`, currentCount + 1);
+            }
 
-        state.replyToCommentId = null;
-        input.placeholder = '전서(댓글)를 남기시오...';
-        const cancelBtn = document.getElementById('cancel-reply-btn');
-        if(cancelBtn) cancelBtn.remove();
-        input.classList.remove('pl-8');
-        await loadComments(postId);
-    }
+            state.replyToCommentId = null;
+            input.placeholder = '전서(댓글)를 남기시오...';
+            const cancelBtn = document.getElementById('cancel-reply-btn');
+            if(cancelBtn) cancelBtn.remove();
+            input.classList.remove('pl-8');
+            await loadComments(postId);
+        }
+    });
 }
 
 window.deleteComment = async function(commentId, userId) {
@@ -2459,13 +2526,19 @@ window.deleteComment = async function(commentId, userId) {
     if (isAdmin || isAuthor) {
         const { error } = await client.from('comments').delete().eq('id', commentId);
         if (error) showToast('파기 중 문제가 생겼소.', 'error');
-        else showToast('전서를 파기했소.', 'success');
+        else {
+            showToast('전서를 파기했소.', 'success');
+            if (state.currentPostId) await loadComments(state.currentPostId);
+        }
         return;
     }
     const deviceId = getGuestDeviceId();
     const { error } = await client.rpc('delete_guest_comment', { p_comment_id: commentId, p_device_id: deviceId });
     if (error) showToast('파기 중 문제가 생겼소.', 'error');
-    else showToast('전서를 파기했소.', 'success');
+    else {
+        showToast('전서를 파기했소.', 'success');
+        if (state.currentPostId) await loadComments(state.currentPostId);
+    }
 }
 
 function setupRealtimeComments(postId) {
@@ -2779,6 +2852,10 @@ function init() {
         if (hash) {
             if (hash.startsWith('post-')) {
                 const postId = hash.substring(5);
+                if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(postId)) {
+                    navigate('gangho-plaza', false);
+                    return;
+                }
                 client.from('posts')
                     .select(`*, profiles:user_id (nickname, post_count, comment_count, avatar_url)`)
                     .eq('id', postId)
@@ -2814,6 +2891,10 @@ function init() {
     if (initialHash) {
         if (initialHash.startsWith('post-')) {
             const postId = initialHash.substring(5);
+            if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(postId)) {
+                navigate('gangho-plaza', false);
+                return;
+            }
             client.from('posts')
                 .select(`*, profiles:user_id (nickname, post_count, comment_count, avatar_url)`)
                 .eq('id', postId)
@@ -3321,6 +3402,7 @@ window.handleNotificationClick = async function(link, notiId) {
     
     if (link.startsWith('post:')) {
         const postId = link.split(':')[1];
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(postId)) return;
         const { data } = await client.from('posts').select(`*, profiles:user_id (nickname)`).eq('id', postId).single();
         if (data) openPostDetail(data);
     }

@@ -27,6 +27,10 @@
     --radius-xl: 24px;
 }
 
+:where(.text-yellow-300, .text-yellow-400, .text-yellow-500, .text-yellow-600) { color: var(--accent-color) !important; }
+:where(.bg-yellow-400, .bg-yellow-500, .bg-yellow-600) { background-color: var(--accent-color) !important; }
+:where(.border-yellow-400, .border-yellow-500, .border-yellow-600) { border-color: var(--accent-color) !important; }
+
 :root[data-theme="gold"] {
     --accent-color: #FCD34D;
     --accent-dim: rgba(252, 211, 77, 0.15);
