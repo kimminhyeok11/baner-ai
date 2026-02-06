@@ -307,7 +307,8 @@ async function loadNews() {
         const isSupabase = /supabase\.co\/functions\/v1\//i.test(proxy) || /functions\.supabase\.co\//i.test(proxy);
         const headers = {};
         if (isSupabase) headers['Authorization'] = `Bearer ${SUPABASE_ANON_KEY}`;
-        const res = await fetch(proxy, { mode: 'cors', headers });
+        const bust = proxy + (proxy.includes('?') ? '&' : '?') + '_=' + Date.now();
+        const res = await fetch(bust, { mode: 'cors', headers });
         if (!res.ok) throw new Error('network');
         const data = await res.json();
         const items = Array.isArray(data) ? data : (data.items || []);
@@ -358,7 +359,8 @@ async function loadNewsView() {
         const headers = {};
         if (isSupabase) headers['Authorization'] = `Bearer ${SUPABASE_ANON_KEY}`;
         const url = q ? `${proxy}?q=${encodeURIComponent(q)}` : proxy;
-        const res = await fetch(url, { mode: 'cors', headers });
+        const bust = url + (url.includes('?') ? '&' : '?') + '_=' + Date.now();
+        const res = await fetch(bust, { mode: 'cors', headers });
         if (!res.ok) throw new Error('network');
         const data = await res.json();
         const items = Array.isArray(data) ? data : (data.items || []);
@@ -372,6 +374,47 @@ async function loadNewsView() {
     }
 }
 window.refreshNewsView = function() { loadNewsView(); };
+async function loadMiniTrends() {
+    const boxKospi = document.getElementById('mini-kospi');
+    const boxKosdaq = document.getElementById('mini-kosdaq');
+    const headKospi = document.getElementById('mini-kospi-head');
+    const headKosdaq = document.getElementById('mini-kosdaq-head');
+    if (!boxKospi || !boxKosdaq) return;
+    const render = (inv, info) => {
+        const f = (n)=> (typeof n === 'number') ? n.toLocaleString('ko-KR') : '-';
+        const c = (n)=> (n>0?'text-red-400':'text-blue-400');
+        return `
+            <div class="grid grid-cols-3 gap-1">
+                <div class="text-center"><div class="text-[10px] text-gray-500">개인</div><div class="${c(inv.individual)}">${f(inv.individual)}</div></div>
+                <div class="text-center"><div class="text-[10px] text-gray-500">외국인</div><div class="${c(inv.foreign)}">${f(inv.foreign)}</div></div>
+                <div class="text-center"><div class="text-[10px] text-gray-500">기관</div><div class="${c(inv.institution)}">${f(inv.institution)}</div></div>
+            </div>
+        `;
+    };
+    const fetchOne = async (index) => {
+        const url = `${SUPABASE_URL}/functions/v1/trends?index=${encodeURIComponent(index)}`;
+        const headers = { Authorization: `Bearer ${SUPABASE_ANON_KEY}` };
+        const res = await fetch(url, { mode: 'cors', headers });
+        if (!res.ok) throw new Error('network');
+        const j = await res.json();
+        return { inv: j.investors || {}, info: { point: j.point, change_percent: j.change_percent } };
+    };
+    const pc = (p)=> String(p||'').startsWith('-') ? 'text-blue-400' : 'text-red-400';
+    try {
+        boxKospi.innerHTML = '불러오는 중...';
+        boxKosdaq.innerHTML = '불러오는 중...';
+        const [r1, r2] = await Promise.all([fetchOne('KOSPI'), fetchOne('KOSDAQ')]);
+        if (headKospi) headKospi.innerHTML = `KOSPI <span class="text-white font-bold">${r1.info.point || '-'}</span> <span class="${pc(r1.info.change_percent)}">${r1.info.change_percent || '-'}</span>`;
+        if (headKosdaq) headKosdaq.innerHTML = `KOSDAQ <span class="text-white font-bold">${r2.info.point || '-'}</span> <span class="${pc(r2.info.change_percent)}">${r2.info.change_percent || '-'}</span>`;
+        boxKospi.innerHTML = render(r1.inv, r1.info);
+        boxKosdaq.innerHTML = render(r2.inv, r2.info);
+    } catch {
+        if (headKospi) headKospi.innerHTML = 'KOSPI - -';
+        if (headKosdaq) headKosdaq.innerHTML = 'KOSDAQ - -';
+        boxKospi.innerHTML = '동향을 불러올 수 없소.';
+        boxKosdaq.innerHTML = '동향을 불러올 수 없소.';
+    }
+}
 // ------------------------------------------------------------------
 // 3. 인증 (Auth)
 // ------------------------------------------------------------------
@@ -858,6 +901,8 @@ window.deletePost = async function(postId) {
 // 6. UI: 네비게이션 & 렌더링
 // ------------------------------------------------------------------
 
+let miniTrendsInterval = null;
+
 function navigate(viewId, pushHistory = true) {
     document.querySelectorAll('.app-view').forEach(el => el.classList.add('hidden'));
     document.getElementById(viewId).classList.remove('hidden');
@@ -875,8 +920,17 @@ function navigate(viewId, pushHistory = true) {
         window.history.pushState({ viewId }, null, `#${viewId}`);
     }
 
+    if (miniTrendsInterval) {
+        clearInterval(miniTrendsInterval);
+        miniTrendsInterval = null;
+    }
+
     if (viewId === 'gangho-plaza') renderPosts('posts-list-public', 'public');
     if (viewId === 'gangho-plaza') loadNews();
+    if (viewId === 'gangho-plaza') {
+        loadMiniTrends();
+        miniTrendsInterval = setInterval(loadMiniTrends, 60_000);
+    }
     if (viewId === 'news-view') loadNewsView();
     if (viewId === 'stock-board') {
         if(state.stockTags.length === 0) fetchStockTags();
@@ -1839,8 +1893,7 @@ window.openPostDetail = async function(post) {
     }
     if (editBtn) editBtn.onclick = () => openPostEditModal(post);
     
-    loadComments(post.id);
-    modal.classList.remove('hidden');
+    // 상세는 전용 뷰로 전환되어 표시되므로 별도 모달 표시 불필요
     // 히스토리 푸시: 모바일 뒤로가기 지원
     const targetHash = `#post-${post.id}`;
     if (window.location.hash !== targetHash) {
@@ -2206,15 +2259,32 @@ function createCommentNode(comment, allChildren, depth = 0) {
         <p class="text-xs text-gray-200">${linkifyHtml(comment.content)}</p>
         <div class="flex items-center gap-2 mt-1">
             <button onclick="setReplyTarget('${comment.id}', '${author}')" class="text-[10px] text-gray-500 hover:text-gray-300">↪ 답글</button>
+            <button onclick="openInlineReply('${comment.id}', '${author}')" class="text-[10px] text-gray-500 hover:text-gray-300">✎ 인라인</button>
             ${canDelete ? `<button onclick="deleteComment('${comment.id}','${comment.user_id || ''}')" class="text-[10px] text-red-500 hover:text-red-400">파기</button>` : ''}
         </div>
     `;
     wrapper.appendChild(commentEl);
 
     const replies = allChildren.filter(c => c.parent_id === comment.id);
+    if (replies.length > 0) {
+        const toggleBar = document.createElement('div');
+        toggleBar.style.marginLeft = `${margin}px`;
+        const btn = document.createElement('button');
+        btn.id = `toggle-replies-btn-${comment.id}`;
+        btn.className = 'text-[10px] text-gray-500 hover:text-gray-300 mt-1';
+        btn.innerText = `↳ 답글 ${replies.length}개 보기`;
+        btn.onclick = () => toggleReplies(comment.id);
+        toggleBar.appendChild(btn);
+        wrapper.appendChild(toggleBar);
+    }
+    const repliesBox = document.createElement('div');
+    repliesBox.id = `replies-${comment.id}`;
+    repliesBox.className = 'mt-1 hidden';
+    repliesBox.style.marginLeft = `${margin + 20}px`;
     replies.forEach(reply => {
-        wrapper.appendChild(createCommentNode(reply, allChildren, depth + 1));
+        repliesBox.appendChild(createCommentNode(reply, allChildren, depth + 1));
     });
+    wrapper.appendChild(repliesBox);
 
     return wrapper;
 }
@@ -2257,6 +2327,82 @@ window.setReplyTarget = function(commentId, authorName) {
         input.parentNode.appendChild(cancelBtn);
     }
 }
+window.toggleReplies = function(commentId) {
+    const box = document.getElementById(`replies-${commentId}`);
+    const btn = document.getElementById(`toggle-replies-btn-${commentId}`);
+    if (!box || !btn) return;
+    const isHidden = box.classList.contains('hidden');
+    if (isHidden) {
+        box.classList.remove('hidden');
+        btn.innerText = btn.innerText.replace('보기', '접기');
+    } else {
+        box.classList.add('hidden');
+        btn.innerText = btn.innerText.replace('접기', '보기');
+    }
+}
+window.openInlineReply = function(commentId, authorName) {
+    const existing = document.getElementById(`inline-reply-${commentId}`);
+    if (existing) {
+        const inp = document.getElementById(`inline-reply-input-${commentId}`);
+        if (inp) inp.focus();
+        return;
+    }
+    const parent = document.getElementById(`comment-${commentId}`);
+    if (!parent) return;
+    const box = document.createElement('div');
+    box.id = `inline-reply-${commentId}`;
+    box.className = 'mt-2 flex items-center gap-2 relative';
+    const input = document.createElement('input');
+    input.id = `inline-reply-input-${commentId}`;
+    input.type = 'text';
+    input.className = 'flex-grow bg-black border border-gray-700 rounded-xl px-3 py-2 text-white focus:border-yellow-500 outline-none text-xs';
+    input.placeholder = `@${authorName}에게 답신...`;
+    const send = document.createElement('button');
+    send.className = 'bg-yellow-600 text-black font-bold px-3 py-2 rounded-xl text-xs hover:bg-yellow-500';
+    send.innerText = '올리기';
+    send.onclick = () => submitInlineReply(commentId);
+    const cancel = document.createElement('button');
+    cancel.className = 'bg-gray-800 text-white px-3 py-2 rounded-xl text-xs hover:bg-gray-700 border border-gray-600';
+    cancel.innerText = '그만두기';
+    cancel.onclick = () => { box.remove(); };
+    box.appendChild(input);
+    box.appendChild(send);
+    box.appendChild(cancel);
+    parent.parentNode.insertBefore(box, parent.nextSibling);
+    input.focus();
+}
+async function submitInlineReply(parentId) {
+    const inp = document.getElementById(`inline-reply-input-${parentId}`);
+    if (!inp) return;
+    const content = inp.value.trim();
+    if (!content) return;
+    if (containsBadWords(content)) { showToast('금칙어가 포함되었소.', 'error'); return; }
+    if (state.user && state.profile?.is_banned) { showToast('관문 출입 금지 상태이오.', 'error'); return; }
+    if (!state.user) {
+        const today = new Date().toISOString().split('T')[0];
+        const count = parseInt(localStorage.getItem(`comment_count_${today}`) || '0');
+        if (count >= 10) { showToast('하루에 10개의 익명 전서만 띄울 수 있소.', 'error'); return; }
+    }
+    const payload = {
+        post_id: state.currentPostId,
+        content,
+        user_id: state.user?.id || null,
+        guest_nickname: state.user ? null : `무협객(${Math.floor(Math.random()*1000)})`,
+        guest_device_id: state.user ? null : getGuestDeviceId(),
+        parent_id: parentId,
+        created_at: new Date().toISOString()
+    };
+    const { error } = await client.from('comments').insert(payload);
+    if (error) {
+        showToast('전서 등록에 차질이 생겼소.', 'error');
+        return;
+    }
+    const box = document.getElementById(`inline-reply-${parentId}`);
+    if (box) box.remove();
+    await loadComments(state.currentPostId);
+    const domId = `comment-${parentId}`;
+    scrollToComment(domId);
+}
 
 async function addComment() {
     const postId = state.currentPostId;
@@ -2281,13 +2427,14 @@ async function addComment() {
         user_id: state.user?.id || null,
         guest_nickname: state.user ? null : `무협객(${Math.floor(Math.random()*1000)})`,
         guest_device_id: state.user ? null : getGuestDeviceId(),
-        parent_id: state.replyToCommentId || null
+        parent_id: state.replyToCommentId || null,
+        created_at: new Date().toISOString()
     };
 
     const { error } = await client.from('comments').insert(payload);
     if (error) {
-        console.error('전서 등록 실패:', error);
         showToast('전서 등록에 차질이 생겼소.', 'error');
+        return;
     } else {
         input.value = '';
         
@@ -2302,6 +2449,7 @@ async function addComment() {
         const cancelBtn = document.getElementById('cancel-reply-btn');
         if(cancelBtn) cancelBtn.remove();
         input.classList.remove('pl-8');
+        await loadComments(postId);
     }
 }
 
