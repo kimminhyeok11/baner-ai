@@ -275,6 +275,103 @@ window.updatePreviewSetting = function() {
     try { localStorage.setItem('preview_enabled', JSON.stringify(val)); } catch {}
     showToast(val ? '자동 프리뷰를 켰소.' : '자동 프리뷰를 껐소.', 'success');
 };
+function getNewsProxyUrl() {
+    try {
+        const saved = localStorage.getItem('news_proxy_url');
+        if (saved && saved.trim()) return saved.trim();
+        return `${SUPABASE_URL}/functions/v1/news`;
+    } catch {
+        return `${SUPABASE_URL}/functions/v1/news`;
+    }
+}
+window.updateNewsProxySetting = function() {
+    const input = document.getElementById('news-proxy-input');
+    const url = (input?.value || '').trim();
+    try {
+        if (url) localStorage.setItem('news_proxy_url', url);
+        else localStorage.removeItem('news_proxy_url');
+        showToast('뉴스 프록시가 기록되었소.', 'success');
+        loadNews();
+    } catch { showToast('기록에 차질이 생겼소.', 'error'); }
+};
+async function loadNews() {
+    const container = document.getElementById('news-feed');
+    if (!container) return;
+    const proxy = getNewsProxyUrl();
+    if (!proxy) {
+        container.innerHTML = '<div class="text-[11px] text-gray-500">증권 뉴스 프록시를 설정하시오.</div>';
+        return;
+    }
+    container.innerHTML = '<div class="text-[11px] text-gray-500">뉴스를 불러오는 중...</div>';
+    try {
+        const isSupabase = /supabase\.co\/functions\/v1\//i.test(proxy) || /functions\.supabase\.co\//i.test(proxy);
+        const headers = {};
+        if (isSupabase) headers['Authorization'] = `Bearer ${SUPABASE_ANON_KEY}`;
+        const res = await fetch(proxy, { mode: 'cors', headers });
+        if (!res.ok) throw new Error('network');
+        const data = await res.json();
+        const items = Array.isArray(data) ? data : (data.items || []);
+        if (!items.length) {
+            container.innerHTML = '<div class="text-[11px] text-gray-500">표시할 뉴스가 없소.</div>';
+            return;
+        }
+        container.innerHTML = items.slice(0, 10).map(it => {
+            const t = it.title || '';
+            const l = it.link || '#';
+            const s = it.source || '';
+            const d = it.published_at ? new Date(it.published_at).toLocaleString() : '';
+            return `<div class="flex items-center justify-between text-xs">
+                <a href="${l}" target="_blank" rel="noopener noreferrer" class="text-gray-200 hover:text-yellow-400 truncate flex-1">${t}</a>
+                <span class="ml-2 text-[10px] text-gray-500">${s}${d ? ' • ' + d : ''}</span>
+            </div>`;
+        }).join('');
+    } catch {
+        container.innerHTML = '<div class="text-[11px] text-gray-500">프록시 접근에 차질이 있소.</div>';
+    }
+}
+function renderNewsItems(items, limit = 50) {
+    const list = document.getElementById('news-list');
+    if (!list) return;
+    list.innerHTML = items.slice(0, limit).map(it => {
+        const t = it.title || '';
+        const l = it.link || '#';
+        const s = it.source || '';
+        const d = it.published_at ? new Date(it.published_at).toLocaleString() : '';
+        return `<div class="flex items-center justify-between text-xs">
+            <a href="${l}" target="_blank" rel="noopener noreferrer" class="text-gray-200 hover:text-yellow-400 flex-1">${t}</a>
+            <span class="ml-2 text-[10px] text-gray-500">${s}${d ? ' • ' + d : ''}</span>
+        </div>`;
+    }).join('');
+}
+async function loadNewsView() {
+    const list = document.getElementById('news-list');
+    if (!list) return;
+    const q = (document.getElementById('news-query-input')?.value || '').trim();
+    const proxy = getNewsProxyUrl();
+    if (!proxy) {
+        list.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">프록시가 필요하오.</div>';
+        return;
+    }
+    list.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">불러오는 중...</div>';
+    try {
+        const isSupabase = /supabase\.co\/functions\/v1\//i.test(proxy) || /functions\.supabase\.co\//i.test(proxy);
+        const headers = {};
+        if (isSupabase) headers['Authorization'] = `Bearer ${SUPABASE_ANON_KEY}`;
+        const url = q ? `${proxy}?q=${encodeURIComponent(q)}` : proxy;
+        const res = await fetch(url, { mode: 'cors', headers });
+        if (!res.ok) throw new Error('network');
+        const data = await res.json();
+        const items = Array.isArray(data) ? data : (data.items || []);
+        if (!items.length) {
+            list.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">표시할 뉴스가 없소.</div>';
+            return;
+        }
+        renderNewsItems(items);
+    } catch {
+        list.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">접근에 차질이 있소.</div>';
+    }
+}
+window.refreshNewsView = function() { loadNewsView(); };
 // ------------------------------------------------------------------
 // 3. 인증 (Auth)
 // ------------------------------------------------------------------
@@ -779,6 +876,8 @@ function navigate(viewId, pushHistory = true) {
     }
 
     if (viewId === 'gangho-plaza') renderPosts('posts-list-public', 'public');
+    if (viewId === 'gangho-plaza') loadNews();
+    if (viewId === 'news-view') loadNewsView();
     if (viewId === 'stock-board') {
         if(state.stockTags.length === 0) fetchStockTags();
         else renderPosts('posts-list-stock', 'stock', state.currentStockName);
@@ -787,6 +886,10 @@ function navigate(viewId, pushHistory = true) {
     if (viewId === 'my-page') renderMyPage();
 }
 
+document.addEventListener('DOMContentLoaded', () => {
+    const qInput = document.getElementById('news-query-input');
+    if (qInput) qInput.addEventListener('keydown', e => { if (e.key === 'Enter') loadNewsView(); });
+});
 // ------------------------------------------------------------------
 // 7. My Page (본거지) & Settings
 // ------------------------------------------------------------------
@@ -2498,6 +2601,16 @@ function init() {
     const navEl = document.querySelector('nav');
     if (headerEl) headerEl.classList.remove('hidden');
     if (navEl) navEl.classList.remove('hidden');
+    try {
+        const titleEl = document.getElementById('brand-title');
+        if (titleEl) {
+            const supportsWebkit = CSS && CSS.supports && CSS.supports('-webkit-background-clip', 'text');
+            const supportsStandard = CSS && CSS.supports && CSS.supports('background-clip', 'text');
+            if (supportsWebkit || supportsStandard) {
+                titleEl.classList.add('gradient-text');
+            }
+        }
+    } catch {}
 
     const mugongSel = document.getElementById('mu-gong-select');
     MU_GONG_TYPES.forEach(m => mugongSel.innerHTML += `<option value="${m.id}">${m.name}</option>`);

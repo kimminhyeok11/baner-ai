@@ -35,9 +35,8 @@
     <!-- Header -->
     <header class="flex-none z-40 glass glass-border">
         <div class="max-w-md mx-auto px-4 h-14 flex items-center justify-between">
-            <h1 class="text-2xl font-black tracking-tighter cursor-pointer select-none transition-all duration-300 hover:scale-105" 
-                onclick="navigate('gangho-plaza')"
-                style="background: linear-gradient(to right, #FCD34D, #F59E0B, #FCD34D); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-shadow: 0 0 15px rgba(245, 158, 11, 0.5);">
+            <h1 id="brand-title" class="text-2xl font-black tracking-tighter cursor-pointer select-none transition-all duration-300 hover:scale-105 brand-title" 
+                onclick="navigate('gangho-plaza')">
                 千金門
             </h1>
             <div class="flex items-center gap-3">
@@ -58,7 +57,20 @@
     <main class="flex-grow overflow-y-auto w-full max-w-md mx-auto p-4 scroll-hidden">
         <div id="gangho-plaza" class="app-view">
             <h2 class="text-2xl font-bold text-white mb-6">강호 광장</h2>
+            <div class="mb-2 flex items-center justify-between">
+                <span class="text-sm text-gray-400">증권 뉴스</span>
+                <button onclick="navigate('news-view')" class="text-xs text-yellow-400 hover:text-yellow-300">더보기</button>
+            </div>
+            <div id="news-feed" class="mb-4 space-y-1"></div>
             <div class="space-y-1" id="posts-list-public"></div>
+        </div>
+        <div id="news-view" class="app-view hidden">
+            <h2 class="text-2xl font-bold text-white mb-2">증권 뉴스</h2>
+            <div class="flex items-center gap-2 mb-3">
+                <input id="news-query-input" type="text" class="flex-grow bg-black border border-gray-700 rounded-xl px-4 py-2 text-white focus:border-yellow-500 outline-none text-sm" placeholder="예: 코스피 OR 코스닥 OR 증시">
+                <button onclick="refreshNewsView()" class="bg-gray-800 text-white px-3 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">새로고침</button>
+            </div>
+            <div id="news-list" class="space-y-2 min-h-[200px]"></div>
         </div>
         <div id="stock-board" class="app-view hidden">
             <h2 class="text-2xl font-bold text-white mb-2">종목 비급</h2>
@@ -280,6 +292,14 @@
                         <button onclick="updateProxySetting()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">기록</button>
                     </div>
                     <p class="text-[11px] text-gray-500 mt-1">서버에서 Open Graph 메타를 추출하는 주소를 기입하시오.</p>
+                </div>
+                <div>
+                    <h4 class="text-sm font-bold text-gray-400 mb-3">증권 뉴스 프록시</h4>
+                    <div class="flex items-center gap-2">
+                        <input id="news-proxy-input" type="text" class="flex-grow bg-black border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-yellow-500 outline-none" placeholder="예: https://your-proxy.example/news">
+                        <button onclick="updateNewsProxySetting()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">기록</button>
+                    </div>
+                    <p class="text-[11px] text-gray-500 mt-1">JSON 배열 또는 {items:[]} 형식으로 제목/링크/출처/시간을 반환.</p>
                 </div>
                 <div>
                     <h4 class="text-sm font-bold text-gray-400 mb-3">호(닉네임) 개명</h4>
