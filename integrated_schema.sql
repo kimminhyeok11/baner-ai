@@ -581,3 +581,81 @@ create index if not exists idx_notifications_user_created on public.notification
 create index if not exists idx_notifications_user_type_created on public.notifications(user_id, type, created_at);
 create index if not exists idx_messages_receiver_created on public.messages(receiver_id, created_at);
 create index if not exists idx_messages_sender_created on public.messages(sender_id, created_at);
+
+create extension if not exists pg_trgm;
+create index if not exists idx_posts_title_trgm on public.posts using gin (title gin_trgm_ops);
+create index if not exists idx_notifications_user_isread on public.notifications(user_id, is_read);
+create index if not exists idx_messages_receiver_isread on public.messages(receiver_id, is_read);
+create index if not exists idx_user_relationships_user_type on public.user_relationships(user_id, type);
+create index if not exists idx_user_relationships_target_type on public.user_relationships(target_id, type);
+
+create table if not exists public.journal_entries (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  entry_date date not null,
+  base_capital numeric(18,2) not null,
+  profit_amount numeric(18,2) not null,
+  profit_percent numeric(9,4) not null,
+  note text,
+  is_public boolean default false,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+alter table public.journal_entries enable row level security;
+drop policy if exists "Journal entries are viewable" on public.journal_entries;
+create policy "Journal entries are viewable"
+  on journal_entries for select
+  using ( is_public = true or auth.uid() = user_id );
+drop policy if exists "Users can insert journal" on public.journal_entries;
+create policy "Users can insert journal"
+  on journal_entries for insert
+  with check ( auth.uid() = user_id );
+drop policy if exists "Users can update own journal" on public.journal_entries;
+create policy "Users can update own journal"
+  on journal_entries for update
+  using ( auth.uid() = user_id );
+drop policy if exists "Users can delete own journal" on public.journal_entries;
+create policy "Users can delete own journal"
+  on journal_entries for delete
+  using ( auth.uid() = user_id );
+create index if not exists idx_journal_user_date on public.journal_entries(user_id, entry_date);
+create index if not exists idx_journal_public_created on public.journal_entries(is_public, created_at);
+
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'journal_entries' and column_name = 'strategy'
+  ) then
+    alter table public.journal_entries add column strategy text;
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'journal_entries' and column_name = 'tags'
+  ) then
+    alter table public.journal_entries add column tags text;
+  end if;
+end $$;
+create index if not exists idx_journal_public_strategy on public.journal_entries(is_public, strategy);
+create index if not exists idx_journal_public_tags on public.journal_entries using gin (tags gin_trgm_ops);
+
+create table if not exists public.journal_monthly_goals (
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  ym text not null,
+  target_profit numeric(18,2) not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  primary key (user_id, ym)
+);
+alter table public.journal_monthly_goals enable row level security;
+drop policy if exists "Goals viewable by owner" on public.journal_monthly_goals;
+create policy "Goals viewable by owner"
+  on journal_monthly_goals for select
+  using ( auth.uid() = user_id );
+drop policy if exists "Goals insert by owner" on public.journal_monthly_goals;
+create policy "Goals insert by owner"
+  on journal_monthly_goals for insert
+  with check ( auth.uid() = user_id );
+drop policy if exists "Goals update by owner" on public.journal_monthly_goals;
+create policy "Goals update by owner"
+  on journal_monthly_goals for update
+  using ( auth.uid() = user_id );
+create index if not exists idx_goals_user_ym on public.journal_monthly_goals(user_id, ym);

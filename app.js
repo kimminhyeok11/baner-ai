@@ -961,6 +961,11 @@ function navigate(viewId, pushHistory = true) {
             });
         } catch {}
     }
+    try {
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        const mainEl = document.querySelector('main');
+        if (mainEl) mainEl.scrollTop = 0;
+    } catch {}
 
     if (miniTrendsInterval) {
         clearInterval(miniTrendsInterval);
@@ -973,7 +978,9 @@ function navigate(viewId, pushHistory = true) {
         loadMiniTrends();
         miniTrendsInterval = setInterval(loadMiniTrends, 60_000);
     }
+    if (viewId === 'gangho-plaza') loadJournalFeed();
     if (viewId === 'news-view') loadNewsView();
+    if (viewId === 'journal-board') loadJournalBoard();
     if (viewId === 'stock-board') {
         if(state.stockTags.length === 0) fetchStockTags();
         else renderPosts('posts-list-stock', 'stock', state.currentStockName);
@@ -996,7 +1003,388 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 500);
         });
     }
+    const jd = document.getElementById('journal-date');
+    if (jd) {
+        const today = new Date().toISOString().split('T')[0];
+        jd.value = today;
+    }
 });
+
+window.saveJournalEntry = async function() {
+    if (!state.user) return showToast('입문 후 기록 가능하오.', 'error');
+    const base = parseFloat(document.getElementById('journal-base').value || '0');
+    const profit = parseFloat(document.getElementById('journal-profit').value || '0');
+    const date = document.getElementById('journal-date').value || new Date().toISOString().split('T')[0];
+    const note = (document.getElementById('journal-note').value || '').trim();
+    const strategy = (document.getElementById('journal-strategy').value || '').trim();
+    const tags = (document.getElementById('journal-tags').value || '').trim();
+    const pub = !!document.getElementById('journal-public').checked;
+    if (!base) return showToast('기초 자산을 입력하시오.', 'error');
+    const percent = base ? (profit / base) * 100 : 0;
+    const payload = {
+        user_id: state.user.id,
+        entry_date: date,
+        base_capital: base,
+        profit_amount: profit,
+        profit_percent: Math.round(percent * 100) / 100,
+        note: note || null,
+        strategy: strategy || null,
+        tags: tags || null,
+        is_public: pub
+    };
+    const { error } = await client.from('journal_entries').insert(payload);
+    if (error) return showToast('기록에 차질이 있소.', 'error');
+    document.getElementById('journal-profit').value = '';
+    document.getElementById('journal-note').value = '';
+    document.getElementById('journal-strategy').value = '';
+    document.getElementById('journal-tags').value = '';
+    document.getElementById('journal-public').checked = false;
+    loadMyJournal();
+    if (pub) loadJournalFeed();
+}
+
+async function loadMyJournal() {
+    if (!state.user) return;
+    const box = document.getElementById('my-journal-list');
+    box.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">불러오는 중...</div>';
+    const { data, error } = await client.from('journal_entries')
+        .select('*')
+        .eq('user_id', state.user.id)
+        .order('entry_date', { ascending: false })
+        .limit(100);
+    if (error) { box.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">기록이 없소.</div>'; return; }
+    box.innerHTML = '';
+    (data || []).forEach(j => {
+        const el = document.createElement('div');
+        const signClass = j.profit_amount >= 0 ? 'text-red-400' : 'text-blue-400';
+        const pct = (Math.round(j.profit_percent * 100) / 100).toFixed(2);
+        el.className = 'bg-[#1C1C1E] p-3 rounded-xl border border-gray-800';
+        el.innerHTML = `<div class="flex justify-between items-center">
+            <div class="text-sm text-white">₩${Number(j.base_capital).toLocaleString('ko-KR')}</div>
+            <div class="text-xs text-gray-400">${j.entry_date}</div>
+        </div>
+        <div class="flex justify-between items-center mt-1">
+            <div class="${signClass} font-bold">₩${Number(j.profit_amount).toLocaleString('ko-KR')}</div>
+            <div class="${signClass} text-sm">${pct}%</div>
+        </div>
+        ${j.strategy ? `<div class="text-[11px] text-gray-400 mt-1">전략: ${j.strategy}</div>` : ''}
+        ${j.tags ? `<div class="text-[11px] text-gray-400">태그: ${j.tags}</div>` : ''}
+        ${j.note ? `<div class="text-xs text-gray-300 mt-2">${linkifyHtml(j.note)}</div>` : ''}
+        <div class="flex justify-end items-center gap-2 mt-2">
+            <span class="text-[11px] ${j.is_public ? 'text-yellow-400' : 'text-gray-500'}">${j.is_public ? '공개' : '비공개'}</span>
+            <button class="text-xs bg-gray-800 text-gray-300 px-2 py-1 rounded hover:bg-gray-700" onclick="toggleJournalPublic('${j.id}', ${j.is_public ? 'false' : 'true'})">${j.is_public ? '비공개' : '공개'}</button>
+            <button class="text-xs bg-red-800 text-white px-2 py-1 rounded hover:bg-red-700" onclick="deleteJournal('${j.id}')">파기</button>
+        </div>`;
+        box.appendChild(el);
+    });
+    renderMyJournalChart(data || []);
+    renderMonthlySummary(data || []);
+    renderCumulativeChart(data || []);
+    state.myJournalEntries = data || [];
+    loadJournalGoals();
+}
+
+window.toggleJournalPublic = async function(id, toPublic) {
+    if (!state.user) return;
+    const { error } = await client.from('journal_entries').update({ is_public: !!toPublic }).eq('id', id).eq('user_id', state.user.id);
+    if (error) return showToast('변경 불발.', 'error');
+    loadMyJournal();
+    loadJournalFeed();
+}
+
+window.deleteJournal = async function(id) {
+    if (!state.user) return;
+    const { error } = await client.from('journal_entries').delete().eq('id', id).eq('user_id', state.user.id);
+    if (error) return showToast('파기에 차질.', 'error');
+    loadMyJournal();
+    loadJournalFeed();
+}
+
+async function loadJournalFeed() {
+    const box = document.getElementById('journal-feed');
+    if (!box) return;
+    box.innerHTML = '';
+    const { data } = await client.from('journal_entries')
+        .select('*, profiles:user_id (nickname, avatar_url)')
+        .eq('is_public', true)
+        .order('created_at', { ascending: false })
+        .limit(5);
+    (data || []).forEach(j => {
+        const el = document.createElement('div');
+        const signClass = j.profit_amount >= 0 ? 'text-red-400' : 'text-blue-400';
+        const pct = (Math.round(j.profit_percent * 100) / 100).toFixed(2);
+        const author = j.profiles?.nickname || '익명';
+        const avatar = j.profiles?.avatar_url;
+        el.className = 'bg-[#1C1C1E] p-3 rounded-xl border border-gray-800';
+        el.innerHTML = `<div class="flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                ${avatar ? `<img src="${avatar}" class="w-5 h-5 rounded-full">` : `<span class="w-5 h-5 rounded-full bg-gray-700 flex items-center justify-center text-[10px]">👤</span>`}
+                <div class="text-xs text-gray-400">${author}</div>
+            </div>
+            <div class="text-[11px] text-gray-500">${j.entry_date}</div>
+        </div>
+        <div class="flex justify-between items-center mt-1">
+            <div class="${signClass} font-bold">₩${Number(j.profit_amount).toLocaleString('ko-KR')}</div>
+            <div class="${signClass} text-sm">${pct}%</div>
+        </div>
+        ${j.strategy ? `<div class="text-[11px] text-gray-400 mt-1">전략: ${j.strategy}</div>` : ''}
+        ${j.tags ? `<div class="text-[11px] text-gray-400">태그: ${j.tags}</div>` : ''}
+        ${j.note ? `<div class="text-xs text-gray-300 mt-2">${linkifyHtml(j.note)}</div>` : ''}`;
+        box.appendChild(el);
+    });
+}
+
+async function loadJournalBoard() {
+    const box = document.getElementById('journal-board-list');
+    if (!box) return;
+    box.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">불러오는 중...</div>';
+    const kw = (document.getElementById('journal-filter-keyword')?.value || '').trim();
+    const strat = (document.getElementById('journal-filter-strategy')?.value || '').trim();
+    const posOnly = !!document.getElementById('journal-filter-positive')?.checked;
+    const negOnly = !!document.getElementById('journal-filter-negative')?.checked;
+    let q = client.from('journal_entries')
+        .select('*, profiles:user_id (nickname, avatar_url)')
+        .eq('is_public', true)
+        .order('created_at', { ascending: false })
+        .limit(100);
+    if (kw) {
+        q = q.or(`note.ilike.%${kw}%,tags.ilike.%${kw}%`);
+    }
+    if (strat) q = q.ilike('strategy', `%${strat}%`);
+    if (posOnly && !negOnly) q = q.gte('profit_amount', 0);
+    if (negOnly && !posOnly) q = q.lt('profit_amount', 0);
+    const { data, error } = await q;
+    if (error) { box.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">표시할 일지가 없소.</div>'; return; }
+    box.innerHTML = '';
+    (data || []).forEach(j => {
+        const el = document.createElement('div');
+        const signClass = j.profit_amount >= 0 ? 'text-red-400' : 'text-blue-400';
+        const pct = (Math.round(j.profit_percent * 100) / 100).toFixed(2);
+        const author = j.profiles?.nickname || '익명';
+        const avatar = j.profiles?.avatar_url;
+        el.className = 'bg-[#1C1C1E] p-3 rounded-xl border border-gray-800';
+        el.innerHTML = `<div class="flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                ${avatar ? `<img src="${avatar}" class="w-6 h-6 rounded-full">` : `<span class="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center text-[12px]">👤</span>`}
+                <div class="text-xs text-gray-400">${author}</div>
+            </div>
+            <div class="text-[11px] text-gray-500">${j.entry_date}</div>
+        </div>
+        <div class="flex justify-between items-center mt-1">
+            <div class="${signClass} font-bold">₩${Number(j.profit_amount).toLocaleString('ko-KR')}</div>
+            <div class="${signClass} text-sm">${pct}%</div>
+        </div>
+        ${j.strategy ? `<div class="text-[11px] text-gray-400 mt-1">전략: ${j.strategy}</div>` : ''}
+        ${j.tags ? `<div class="text-[11px] text-gray-400">태그: ${j.tags}</div>` : ''}
+        ${j.note ? `<div class="text-xs text-gray-300 mt-2">${linkifyHtml(j.note)}</div>` : ''}`;
+        box.appendChild(el);
+    });
+}
+
+function drawSparkline(canvas, values) {
+    if (!canvas) return;
+    const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+    const cssW = canvas.clientWidth || 300;
+    const cssH = canvas.clientHeight || 80;
+    canvas.width = cssW * dpr;
+    canvas.height = cssH * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    if (!values || !values.length) return;
+    const min = Math.min(...values, 0);
+    const max = Math.max(...values, 0);
+    const span = max - min || 1;
+    const zeroY = cssH - ((0 - min) / span) * cssH;
+    ctx.fillStyle = '#2a2a2a';
+    ctx.fillRect(0, zeroY, cssW, 1);
+    const stepX = cssW / Math.max(1, values.length - 1);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = (values[values.length - 1] >= 0) ? '#ef4444' : '#3b82f6';
+    ctx.beginPath();
+    values.forEach((v, i) => {
+        const x = i * stepX;
+        const y = cssH - ((v - min) / span) * cssH;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+}
+
+function renderMyJournalChart(entries) {
+    const canvas = document.getElementById('my-journal-chart');
+    if (!canvas) return;
+    const sorted = entries.slice().sort((a, b) => new Date(a.entry_date) - new Date(b.entry_date));
+    const recent = sorted.slice(-30);
+    const values = recent.map(e => Number(e.profit_percent) || 0);
+    drawSparkline(canvas, values);
+    const totalProfit = entries.reduce((s, e) => s + (Number(e.profit_amount) || 0), 0);
+    const avgPct = entries.length ? entries.reduce((s, e) => s + (Number(e.profit_percent) || 0), 0) / entries.length : 0;
+    const statsEl = document.getElementById('my-journal-stats');
+    if (statsEl) {
+        const signClass = totalProfit >= 0 ? 'text-red-400' : 'text-blue-400';
+        statsEl.innerHTML = `<span class="${signClass}">₩${Math.round(totalProfit).toLocaleString('ko-KR')}</span> • <span>${(Math.round(avgPct*100)/100).toFixed(2)}%</span>`;
+    }
+}
+
+function renderMonthlySummary(entries) {
+    const box = document.getElementById('my-journal-monthly');
+    if (!box) return;
+    const map = {};
+    entries.forEach(e => {
+        const d = new Date(e.entry_date);
+        if (isNaN(d.getTime())) return;
+        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        map[key] = map[key] || { profit: 0, count: 0, pctSum: 0 };
+        map[key].profit += Number(e.profit_amount) || 0;
+        map[key].pctSum += Number(e.profit_percent) || 0;
+        map[key].count += 1;
+    });
+    const rows = Object.keys(map).sort().slice(-6).map(k => {
+        const v = map[k];
+        const avgPct = v.count ? (v.pctSum / v.count) : 0;
+        const signClass = v.profit >= 0 ? 'text-red-400' : 'text-blue-400';
+        return { key: k, profit: v.profit, avgPct, signClass };
+    });
+    box.innerHTML = '';
+    rows.forEach(r => {
+        const el = document.createElement('div');
+        el.className = 'bg-[#141416] p-3 rounded-xl border border-gray-800';
+        el.innerHTML = `<div class="flex justify-between items-center">
+            <div class="text-xs text-gray-400">${r.key}</div>
+            <div class="${r.signClass} text-sm font-bold">₩${Math.round(r.profit).toLocaleString('ko-KR')}</div>
+        </div>
+        <div class="text-[11px] text-gray-500">평균 ${(Math.round(r.avgPct*100)/100).toFixed(2)}%</div>`;
+        box.appendChild(el);
+    });
+    const barsCanvas = document.getElementById('my-journal-monthly-bars');
+    const profits = rows.map(r => r.profit);
+    drawBars(barsCanvas, profits);
+}
+
+function renderCumulativeChart(entries) {
+    const canvas = document.getElementById('my-journal-cum-chart');
+    if (!canvas) return;
+    const sorted = entries.slice().sort((a, b) => new Date(a.entry_date) - new Date(b.entry_date));
+    const values = [];
+    let run = 0;
+    sorted.forEach(e => {
+        run += Number(e.profit_amount) || 0;
+        values.push(run);
+    });
+    drawSparkline(canvas, values);
+}
+
+function drawBars(canvas, values) {
+    if (!canvas) return;
+    const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+    const cssW = canvas.clientWidth || 300;
+    const cssH = canvas.clientHeight || 80;
+    canvas.width = cssW * dpr;
+    canvas.height = cssH * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    if (!values || !values.length) return;
+    const min = Math.min(...values, 0);
+    const max = Math.max(...values, 0);
+    const span = max - min || 1;
+    const barW = Math.max(6, Math.floor(cssW / (values.length * 2)));
+    const gap = barW;
+    let x = 0;
+    values.forEach(v => {
+        const h = ((Math.abs(v)) / span) * cssH;
+        const y = v >= 0 ? (cssH - h) : (cssH - ((0 - min) / span) * cssH);
+        ctx.fillStyle = v >= 0 ? '#ef4444' : '#3b82f6';
+        ctx.fillRect(x, y, barW, h);
+        x += barW + gap;
+    });
+}
+
+async function saveJournalGoal() {
+    if (!state.user) return showToast('입문 후 기록 가능하오.', 'error');
+    const ym = (document.getElementById('journal-goal-month').value || '').trim();
+    const target = parseFloat(document.getElementById('journal-goal-target').value || '0');
+    if (!ym || !target) return showToast('월과 목표를 채우시오.', 'error');
+    const payload = { user_id: state.user.id, ym, target_profit: target };
+    const { error } = await client.from('journal_monthly_goals').upsert(payload);
+    if (error) return showToast('목표 기록 실패.', 'error');
+    loadJournalGoals();
+}
+
+async function loadJournalGoals() {
+    if (!state.user || !state.myJournalEntries) return;
+    const keys = Array.from(new Set((state.myJournalEntries || []).map(e => {
+        const d = new Date(e.entry_date);
+        if (isNaN(d.getTime())) return null;
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    }).filter(Boolean))).slice(-6);
+    const { data } = await client.from('journal_monthly_goals').select('*').eq('user_id', state.user.id).in('ym', keys);
+    const goals = {};
+    (data || []).forEach(g => { goals[g.ym] = Number(g.target_profit) || 0; });
+    renderMonthlySummaryWithGoals(state.myJournalEntries, goals);
+}
+
+function renderMonthlySummaryWithGoals(entries, goals) {
+    const box = document.getElementById('my-journal-monthly');
+    if (!box) return;
+    const map = {};
+    entries.forEach(e => {
+        const d = new Date(e.entry_date);
+        if (isNaN(d.getTime())) return;
+        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        map[key] = map[key] || { profit: 0, count: 0, pctSum: 0 };
+        map[key].profit += Number(e.profit_amount) || 0;
+        map[key].pctSum += Number(e.profit_percent) || 0;
+        map[key].count += 1;
+    });
+    const rows = Object.keys(map).sort().slice(-6).map(k => {
+        const v = map[k];
+        const avgPct = v.count ? (v.pctSum / v.count) : 0;
+        const signClass = v.profit >= 0 ? 'text-red-400' : 'text-blue-400';
+        const goal = goals?.[k] || 0;
+        const achieve = goal ? Math.round((v.profit / goal) * 100) : null;
+        return { key: k, profit: v.profit, avgPct, signClass, goal, achieve };
+    });
+    box.innerHTML = '';
+    rows.forEach(r => {
+        const el = document.createElement('div');
+        el.className = 'bg-[#141416] p-3 rounded-xl border border-gray-800';
+        el.innerHTML = `<div class="flex justify-between items-center">
+            <div class="text-xs text-gray-400">${r.key}</div>
+            <div class="${r.signClass} text-sm font-bold">₩${Math.round(r.profit).toLocaleString('ko-KR')}</div>
+        </div>
+        <div class="text-[11px] text-gray-500">평균 ${(Math.round(r.avgPct*100)/100).toFixed(2)}%${r.goal ? ` • 목표 ₩${Math.round(r.goal).toLocaleString('ko-KR')} (${r.achieve}% 달성)` : ''}</div>`;
+        box.appendChild(el);
+    });
+    const barsCanvas = document.getElementById('my-journal-monthly-bars');
+    const profits = rows.map(r => r.profit);
+    drawBars(barsCanvas, profits);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const k = document.getElementById('journal-filter-keyword');
+    const s = document.getElementById('journal-filter-strategy');
+    const p = document.getElementById('journal-filter-positive');
+    const n = document.getElementById('journal-filter-negative');
+    [k, s, p, n].forEach(el => {
+        if (el) el.addEventListener('input', () => {
+            if (document.getElementById('journal-board') && !document.getElementById('journal-board').classList.contains('hidden')) {
+                loadJournalBoard();
+            }
+        });
+        if (el) el.addEventListener('change', () => {
+            if (document.getElementById('journal-board') && !document.getElementById('journal-board').classList.contains('hidden')) {
+                loadJournalBoard();
+            }
+        });
+    });
+});
+
+function initJournalTabIfNeeded() {
+    const tab = document.getElementById('tab-my-journal');
+    if (tab) loadMyJournal();
+}
 // ------------------------------------------------------------------
 // 7. My Page (본거지) & Settings
 // ------------------------------------------------------------------
@@ -1111,7 +1499,7 @@ async function renderMyPage() {
 
 window.switchMyPageTab = function(tab) {
     // UI Toggling
-    ['posts', 'activity', 'bookmarks', 'notifications', 'settings'].forEach(t => {
+    ['posts', 'activity', 'bookmarks', 'notifications', 'journal', 'settings'].forEach(t => {
         const btn = document.getElementById(`tab-my-${t}`);
         const area = document.getElementById(`my-${t}-area`);
         
@@ -1132,6 +1520,7 @@ window.switchMyPageTab = function(tab) {
     if (tab === 'bookmarks') loadBookmarkedPosts();
     if (tab === 'activity') loadMyActivity('all');
     if (tab === 'notifications') loadMyNotifications();
+    if (tab === 'journal') loadMyJournal();
 }
 
 async function loadMyPosts() {
