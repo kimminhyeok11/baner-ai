@@ -602,11 +602,11 @@
         <div class="bg-[#1C1C1E] w-full max-w-lg h-[85vh] flex flex-col rounded-3xl shadow-2xl overflow-hidden border border-gray-800">
             <div class="p-4 border-b border-gray-800 flex justify-between items-start bg-[#1C1C1E]">
                 <div class="flex-grow pr-4">
-                    <h3 id="detail-title" class="text-xl font-bold text-white mb-1 leading-snug"></h3>
-                    <div id="detail-meta-container" class="flex items-center gap-1.5 text-sm text-gray-400">
-                        <span id="detail-author"></span>
+                    <h3 id="detail-title-modal" class="text-xl font-bold text-white mb-1 leading-snug"></h3>
+                    <div id="detail-meta-container-modal" class="flex items-center gap-1.5 text-sm text-gray-400">
+                        <span id="detail-author-modal"></span>
                         <span>•</span>
-                        <span id="detail-date" class="text-[11px]"></span>
+                        <span id="detail-date-modal" class="text-[11px]"></span>
                     </div>
                 </div>
                 <button onclick="closeModal('postDetailModal')" class="text-gray-400 hover:text-white p-1 bg-gray-800 rounded-full">
@@ -615,27 +615,27 @@
             </div>
             
             <div class="flex-grow overflow-y-auto p-5 scroll-hidden bg-black">
-                <div id="detail-content" class="post-content-style"></div>
+                <div id="detail-content-modal" class="post-content-style"></div>
                 
                 <div class="flex items-center justify-between mt-8 pt-4 border-t border-gray-800">
                     <div class="flex gap-4">
-                         <button onclick="toggleLike()" class="flex items-center gap-1 text-gray-400 hover:text-red-500 transition"><span class="text-xl">♥</span> <span id="detail-likes">0</span></button>
-                         <span class="flex items-center gap-1 text-gray-400"><span class="text-xl">👁</span> <span id="detail-views">0</span></span>
+                         <button onclick="toggleLike()" class="flex items-center gap-1 text-gray-400 hover:text-red-500 transition"><span class="text-xl">♥</span> <span id="detail-likes-modal">0</span></button>
+                         <span class="flex items-center gap-1 text-gray-400"><span class="text-xl">👁</span> <span id="detail-views-modal">0</span></span>
                     </div>
                     <div class="flex gap-2">
-                        <button id="btn-share-link" class="text-xs bg-gray-800 text-gray-300 px-3 py-1.5 rounded-full hover:bg-gray-700">공유</button>
+                        <button id="btn-share-link-modal" class="text-xs bg-gray-800 text-gray-300 px-3 py-1.5 rounded-full hover:bg-gray-700">공유</button>
                         <!-- Message Button Injected dynamically if logged in -->
-                        <button id="btn-send-msg" class="hidden text-xs bg-gray-800 text-gray-300 px-3 py-1.5 rounded-full hover:bg-gray-700">밀서 보내기</button>
+                        <button id="btn-send-msg-modal" class="hidden text-xs bg-gray-800 text-gray-300 px-3 py-1.5 rounded-full hover:bg-gray-700">밀서 보내기</button>
                         <button onclick="openReportModal('post', state.currentPostId)" class="text-xs text-gray-500 hover:text-red-400 px-2">🚨 관아 신고</button>
-                        <button id="edit-post-btn" class="hidden text-xs text-blue-400 font-bold px-2">교정</button>
-                        <button id="delete-post-btn" class="hidden text-xs text-red-500 font-bold px-2">파기</button>
+                        <button id="edit-post-btn-modal" class="hidden text-xs text-blue-400 font-bold px-2">교정</button>
+                        <button id="delete-post-btn-modal" class="hidden text-xs text-red-500 font-bold px-2">파기</button>
                     </div>
                 </div>
 
                 <div class="mt-6 pt-4 border-t border-gray-800">
-                    <div id="comments-list" class="mb-3 space-y-3"></div>
+                    <div id="comments-list-modal" class="mb-3 space-y-3"></div>
                     <div class="relative">
-                        <textarea id="comment-input" placeholder="전서(댓글)를 남기시오... (Ctrl+Enter 전송)" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)) addComment()" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white pr-12 focus:border-gray-500 focus:outline-none transition resize-y min-h-[44px]"></textarea>
+                        <textarea id="comment-input-modal" placeholder="전서(댓글)를 남기시오... (Ctrl+Enter 전송)" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)) addComment()" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white pr-12 focus:border-gray-500 focus:outline-none transition resize-y min-h-[44px]"></textarea>
                         <button onclick="addComment()" class="absolute right-2 top-2 bg-gray-700 text-white p-1.5 rounded-full hover:bg-gray-600">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                         </button>

@@ -31,6 +31,7 @@ const state = {
         blocks: new Set(),
         mutes: new Set()
     },
+    includeSecretInPlaza: true,
     currentTargetUserId: null,
     submitLocks: {},
     activityFilter: { keyword: '', days: 30 }
@@ -122,6 +123,7 @@ function linkifyHtml(html, enablePreview = state.previewEnabled) {
     const texts = [];
     while (walker.nextNode()) texts.push(walker.currentNode);
     texts.forEach(node => {
+        if (node.parentNode && node.parentNode.tagName === 'A') return;
         const t = node.nodeValue;
         if (!regex.test(t)) return;
         const frag = document.createDocumentFragment();
@@ -204,6 +206,7 @@ function linkifyHtml(html, enablePreview = state.previewEnabled) {
                     wrapper.innerHTML = `<div class="relative w-full h-full bg-black"><img src="${thumb}" alt="" class="w-full h-full object-cover opacity-80"><div class="absolute inset-0 flex items-center justify-center"><div class="bg-red-600 rounded-full w-16 h-16 flex items-center justify-center shadow-lg"><span class="text-white text-2xl">▶</span></div></div></div>`;
                     a.insertAdjacentElement('afterend', wrapper);
                     a.setAttribute('data-preview-added', '1');
+                    existingVidSet.add(vid);
                 }
             } else if (isImage) {
                 const img = document.createElement('img');
@@ -1028,17 +1031,33 @@ window.saveJournalEntry = async function() {
         profit_amount: profit,
         profit_percent: Math.round(percent * 100) / 100,
         note: note || null,
-        strategy: strategy || null,
-        tags: tags || null,
         is_public: pub
     };
-    const { error } = await client.from('journal_entries').insert(payload);
-    if (error) return showToast('기록에 차질이 있소.', 'error');
+    const { data, error } = await client.from('journal_entries').insert(payload).select('id').single();
+    if (error) {
+        const m = (error.message || '').toLowerCase();
+        if (m.includes('relation') && m.includes('journal_entries')) {
+            showToast('스키마가 반영되지 않았소. SQL을 실행하시오.', 'error');
+        } else if (m.includes('foreign key') || m.includes('violates')) {
+            showToast('프로필이 없어 외래키가 막혔소. 프로필 백필을 실행하시오.', 'error');
+        } else if (m.includes('policy') || m.includes('with check') || m.includes('row level security')) {
+            showToast('권한 정책(RLS) 문제로 기록 불발.', 'error');
+        } else {
+            showToast('기록에 차질이 있소.', 'error');
+        }
+        return;
+    }
     document.getElementById('journal-profit').value = '';
     document.getElementById('journal-note').value = '';
     document.getElementById('journal-strategy').value = '';
     document.getElementById('journal-tags').value = '';
     document.getElementById('journal-public').checked = false;
+    if ((strategy || tags) && data?.id) {
+        await client.from('journal_entries').update({
+            strategy: strategy || null,
+            tags: tags || null
+        }).eq('id', data.id).eq('user_id', state.user.id);
+    }
     loadMyJournal();
     if (pub) loadJournalFeed();
 }
@@ -1990,9 +2009,15 @@ async function fetchPosts(type, stockName = null, isLoadMore = false) {
 
     let query = client.from('posts')
         .select(`*, profiles:user_id (nickname, post_count, comment_count, avatar_url)`) 
-        .eq('type', type)
         .order('created_at', { ascending: false })
         .range(from, to);
+    if (type === 'public') {
+        query = state.includeSecretInPlaza 
+            ? query.in('type', ['public','secret'])
+            : query.eq('type', 'public');
+    } else {
+        query = query.eq('type', type);
+    }
 
     if (stockName) query = query.eq('stock_id', stockName);
     if (state.searchQuery) {
@@ -2031,9 +2056,10 @@ function createPostElement(post) {
     postEl.onclick = () => openPostDetail(post);
 
     const badge = post.type === 'stock' && getGuildMembership(post.stock_id) ? '<span class="ml-2 px-2 py-0.5 rounded-full text-[10px] bg-yellow-900/40 text-yellow-400 border border-yellow-700/40">문파</span>' : '';
+    const secretBadge = isSecret ? '<span class="ml-2 px-2 py-0.5 rounded-full text-[10px] bg-gray-800 text-gray-300 border border-gray-700">객잔</span>' : '';
     postEl.innerHTML = `
         <div class="flex justify-between items-start mb-2">
-            <h4 class="text-white font-semibold truncate text-base flex-1">${post.title}${badge}</h4>
+            <h4 class="text-white font-semibold truncate text-base flex-1">${post.title}${badge}${secretBadge}</h4>
             ${!isSecret ? `<span class="text-[10px] text-gray-500 ml-2 bg-gray-800 px-2 py-1 rounded flex items-center gap-1">👁 ${post.view_count || 0} ❤️ ${post.like_count || 0}</span>` : ''}
         </div>
         <div class="text-xs text-gray-400 flex justify-between items-center">
@@ -2192,9 +2218,16 @@ async function renderPosts(containerId, type, stockName = null) {
         const searchDiv = document.createElement('div');
         searchDiv.id = `search-${type}`;
         searchDiv.className = 'mb-4 flex gap-2';
+        const toggleHtml = type === 'public' 
+            ? `<label class="flex items-center gap-2 text-xs text-gray-300 px-2">
+                    <input type="checkbox" ${state.includeSecretInPlaza ? 'checked' : ''} onchange="toggleIncludeSecretPlaza(this.checked)" class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
+                    객잔 포함
+               </label>`
+            : '';
         searchDiv.innerHTML = `
             <input type="text" placeholder="비급 제목 검색..." class="flex-grow bg-gray-800 border border-gray-700 text-white px-3 py-2 rounded-lg text-sm" onkeydown="if(event.key==='Enter') handleSearch('${type}', '${containerId}', '${stockName || ''}', this.value)">
             <button onclick="handleSearch('${type}', '${containerId}', '${stockName || ''}', this.previousElementSibling.value)" class="bg-gray-700 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-600">검색</button>
+            ${toggleHtml}
         `;
         container.parentNode.insertBefore(searchDiv, container);
     }
@@ -2235,6 +2268,11 @@ window.handleSearch = async function(type, containerId, stockName, query) {
     container.appendChild(fragment);
 
     renderLoadMoreButton(container, type, stockName || null);
+}
+window.toggleIncludeSecretPlaza = function(checked) {
+    state.includeSecretInPlaza = !!checked;
+    state.searchQuery = '';
+    renderPosts('posts-list-public', 'public');
 }
 
 function renderLoadMoreButton(container, type, stockName) {
@@ -2856,7 +2894,9 @@ async function submitInlineReply(parentId) {
 async function addComment() {
     return runLocked('addComment', async () => {
         const postId = state.currentPostId;
-        const input = document.getElementById('comment-input');
+        const input = document.querySelector('#post-detail:not(.hidden) #comment-input') 
+            || document.getElementById('comment-input') 
+            || document.getElementById('comment-input-modal');
         const content = input.value.trim();
         if (!content || !postId) return;
         if (containsBadWords(content)) return showToast('금칙어가 포함되었소.', 'error');
@@ -3533,7 +3573,7 @@ async function handleNewPostRealtime(newPost) {
     let isRelevant = false;
     let containerId = '';
 
-    if (newPost.type === 'public' && currentView === 'public') {
+    if (currentView === 'public' && (newPost.type === 'public' || newPost.type === 'secret')) {
         isRelevant = true;
         containerId = 'posts-list-public';
     } else if (newPost.type === 'stock' && currentView === 'stock') {
