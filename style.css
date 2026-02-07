@@ -161,6 +161,14 @@ blockquote {
 .post-content-style h4 { margin-top: 1rem; margin-bottom: 0.5rem; }
 .post-content-style ul, 
 .post-content-style ol { margin-left: 1.25rem; margin-bottom: 0.85rem; }
+/* Content links readability */
+.post-content-style a, #detail-content a, #detail-content-modal a {
+    color: var(--accent-color);
+    text-decoration: underline;
+}
+.post-content-style a:hover, #detail-content a:hover, #detail-content-modal a:hover {
+    opacity: 0.85;
+}
 
 /* Editor Toolbar Sticky & Touch Targets */
 .editor-toolbar {
@@ -188,6 +196,9 @@ blockquote {
     border-bottom-color: var(--accent-color);
     font-weight: 600;
 }
+.nav-btn { transition: color 160ms ease, border-color 160ms ease; }
+#plaza-filter-bar button { transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease, transform 120ms ease; }
+#plaza-filter-bar button:hover { transform: translateY(-1px); }
 
 @media (prefers-reduced-motion: reduce) {
     .animate-slide-up { animation: none; }

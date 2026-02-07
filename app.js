@@ -31,10 +31,19 @@ const state = {
         blocks: new Set(),
         mutes: new Set()
     },
-    includeSecretInPlaza: true,
+    includeSecretInPlaza: (() => { try { return JSON.parse(localStorage.getItem('include_secret_plaza') || 'true'); } catch { return true; } })(),
+    plazaFilterType: (() => { try { return localStorage.getItem('plaza_filter') || 'all'; } catch { return 'all'; } })(),
+    lastRenderedType: null,
+    lastRenderedPosts: [],
+    scrollPositions: {},
     currentTargetUserId: null,
     submitLocks: {},
-    activityFilter: { keyword: '', days: 30 }
+    activityFilter: { keyword: '', days: 30 },
+    impressed: new Set(),
+    notInterestedPostIds: new Set(),
+    recommendedMode: 'mix',
+    dataCollectionEnabled: (() => { try { return JSON.parse(localStorage.getItem('reco_logging_enabled') || 'true'); } catch { return true; } })(),
+    recommendedCache: {}
 };
 
 try {
@@ -114,6 +123,15 @@ function sanitizeHTML(input) {
         });
     });
     return tmp.innerHTML;
+}
+function stripHtml(html) {
+    const div = document.createElement('div');
+    div.innerHTML = html || '';
+    return (div.textContent || div.innerText || '').replace(/\s+/g, ' ').trim();
+}
+function getExcerpt(html, max = 80) {
+    const t = stripHtml(html);
+    return t.length > max ? t.slice(0, max) + '…' : t;
 }
 function linkifyHtml(html, enablePreview = state.previewEnabled) {
     const temp = document.createElement('div');
@@ -289,6 +307,13 @@ window.updatePreviewSetting = function() {
     state.previewEnabled = val;
     try { localStorage.setItem('preview_enabled', JSON.stringify(val)); } catch {}
     showToast(val ? '자동 프리뷰를 켰소.' : '자동 프리뷰를 껐소.', 'success');
+};
+window.updateRecoLoggingSetting = function() {
+    const chk = document.getElementById('reco-logging-enabled');
+    const val = !!chk?.checked;
+    state.dataCollectionEnabled = val;
+    try { localStorage.setItem('reco_logging_enabled', JSON.stringify(val)); } catch {}
+    showToast(val ? '추천 데이터 수집을 켰소.' : '추천 데이터 수집을 껐소.', 'success');
 };
 function getNewsProxyUrl() {
     try {
@@ -938,6 +963,12 @@ window.deletePost = async function(postId) {
 let miniTrendsInterval = null;
 
 function navigate(viewId, pushHistory = true) {
+    try {
+        const currentViewEl = document.querySelector('.app-view:not(.hidden)');
+        if (currentViewEl) {
+            state.scrollPositions[currentViewEl.id] = window.pageYOffset || document.documentElement.scrollTop || 0;
+        }
+    } catch {}
     document.querySelectorAll('.app-view').forEach(el => el.classList.add('hidden'));
     document.getElementById(viewId).classList.remove('hidden');
 
@@ -965,9 +996,14 @@ function navigate(viewId, pushHistory = true) {
         } catch {}
     }
     try {
-        window.scrollTo({ top: 0, behavior: 'instant' });
-        const mainEl = document.querySelector('main');
-        if (mainEl) mainEl.scrollTop = 0;
+        const restore = state.scrollPositions[viewId];
+        if (typeof restore === 'number') {
+            window.scrollTo({ top: restore, behavior: 'instant' });
+        } else {
+            window.scrollTo({ top: 0, behavior: 'instant' });
+            const mainEl = document.querySelector('main');
+            if (mainEl) mainEl.scrollTop = 0;
+        }
     } catch {}
 
     if (miniTrendsInterval) {
@@ -1011,6 +1047,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const today = new Date().toISOString().split('T')[0];
         jd.value = today;
     }
+    try { init(); } catch (e) { console.error('초기화 실패:', e); }
 });
 
 window.saveJournalEntry = async function() {
@@ -1453,6 +1490,8 @@ async function renderMyPage() {
         document.getElementById('noti-message').checked = profile.receive_message_noti ?? true;
         const previewChk = document.getElementById('preview-enabled');
         if (previewChk) previewChk.checked = state.previewEnabled;
+        const recoChk = document.getElementById('reco-logging-enabled');
+        if (recoChk) recoChk.checked = state.dataCollectionEnabled;
         const proxyInput = document.getElementById('proxy-url-input');
         if (proxyInput) {
             try {
@@ -2012,9 +2051,14 @@ async function fetchPosts(type, stockName = null, isLoadMore = false) {
         .order('created_at', { ascending: false })
         .range(from, to);
     if (type === 'public') {
-        query = state.includeSecretInPlaza 
-            ? query.in('type', ['public','secret'])
-            : query.eq('type', 'public');
+        const f = state.plazaFilterType || 'all';
+        if (f === 'all') {
+            query = query.in('type', ['public','secret']);
+        } else if (f === 'public') {
+            query = query.eq('type', 'public');
+        } else {
+            query = query.eq('type', 'secret');
+        }
     } else {
         query = query.eq('type', type);
     }
@@ -2054,14 +2098,16 @@ function createPostElement(post) {
     postEl.className = 'card cursor-pointer';
     postEl.dataset.postId = post.id;
     postEl.onclick = () => openPostDetail(post);
+    observePostCard(postEl, post.id);
 
     const badge = post.type === 'stock' && getGuildMembership(post.stock_id) ? '<span class="ml-2 px-2 py-0.5 rounded-full text-[10px] bg-yellow-900/40 text-yellow-400 border border-yellow-700/40">문파</span>' : '';
     const secretBadge = isSecret ? '<span class="ml-2 px-2 py-0.5 rounded-full text-[10px] bg-gray-800 text-gray-300 border border-gray-700">객잔</span>' : '';
     postEl.innerHTML = `
         <div class="flex justify-between items-start mb-2">
             <h4 class="text-white font-semibold truncate text-base flex-1">${post.title}${badge}${secretBadge}</h4>
-            ${!isSecret ? `<span class="text-[10px] text-gray-500 ml-2 bg-gray-800 px-2 py-1 rounded flex items-center gap-1">👁 ${post.view_count || 0} ❤️ ${post.like_count || 0}</span>` : ''}
+            ${!isSecret ? `<span class="text-[10px] text-gray-500 ml-2 bg-gray-800 px-1.5 py-0.5 rounded flex items-center gap-1">👁 ${post.view_count || 0} ❤️ ${post.like_count || 0}</span>` : ''}
         </div>
+        <div class="text-[11px] text-gray-300 mb-1 truncate">${getExcerpt(post.content || '', 90)}</div>
         <div class="text-xs text-gray-400 flex justify-between items-center">
             <div class="flex items-center space-x-2">
                 <img src="${avatar || ''}" alt="" class="w-5 h-5 rounded-full border border-gray-700 ${avatar ? '' : 'hidden'}">
@@ -2072,6 +2118,29 @@ function createPostElement(post) {
             <span class="text-gray-500">${new Date(post.created_at).toLocaleDateString()}</span>
         </div>
     `;
+    if (state.user) {
+        const menuWrap = document.createElement('div');
+        menuWrap.className = 'mt-1';
+        const menuBtn = document.createElement('button');
+        menuBtn.className = 'text-[11px] bg-gray-800 text-gray-300 px-2 py-1 rounded border border-gray-700';
+        menuBtn.textContent = '⋯';
+        const menu = document.createElement('div');
+        menu.className = 'hidden mt-1 flex items-center gap-2';
+        const btnHide = document.createElement('button');
+        btnHide.className = 'text-[11px] bg-gray-800 text-gray-300 px-2 py-1 rounded border border-gray-700';
+        btnHide.textContent = '관심없음';
+        btnHide.onclick = (e) => { e.stopPropagation(); menu.classList.add('hidden'); markNotInterested(post.id); };
+        const btnMute = document.createElement('button');
+        btnMute.className = 'text-[11px] bg-gray-800 text-gray-300 px-2 py-1 rounded border border-gray-700';
+        btnMute.textContent = '작성자 숨김';
+        btnMute.onclick = (e) => { e.stopPropagation(); menu.classList.add('hidden'); if (post.user_id) muteAuthor(post.user_id); };
+        menuBtn.onclick = (e) => { e.stopPropagation(); menu.classList.toggle('hidden'); };
+        menu.appendChild(btnHide);
+        menu.appendChild(btnMute);
+        menuWrap.appendChild(menuBtn);
+        menuWrap.appendChild(menu);
+        postEl.appendChild(menuWrap);
+    }
     const authorBtn = postEl.querySelector('button.text-yellow-400');
     if (authorBtn && post.user_id) {
         authorBtn.onclick = (e) => { e.stopPropagation(); openUserSheet(post.user_id, author, avatar); };
@@ -2083,6 +2152,117 @@ function createPostElement(post) {
     }
     return postEl;
 }
+
+async function loadRecommended() {
+    const box = document.getElementById('recommended-feed');
+    if (!box) return;
+    box.innerHTML = '<div class="text-[11px] text-gray-500">추천을 계산하는 중...</div>';
+    const mode = state.recommendedMode || 'mix';
+    const cacheKey = `${state.user ? state.user.id : 'anon'}:${mode}`;
+    const cached = state.recommendedCache[cacheKey];
+    if (cached && (Date.now() - cached.ts) < 10 * 60 * 1000) {
+        const mutes = state.relationships.mutes;
+        const blocks = state.relationships.blocks;
+        const notis = state.notInterestedPostIds;
+        let filtered = cached.posts.filter(p => {
+            const uid = p.user_id;
+            const pid = p.id;
+            if (uid && (mutes.has(uid) || blocks.has(uid))) return false;
+            if (notis.has(pid)) return false;
+            return true;
+        });
+        if (mode === 'follow') {
+            const follows = state.relationships.follows;
+            filtered = filtered.filter(p => p.user_id && follows.has(p.user_id));
+        } else if (mode === 'new') {
+            filtered = filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        } else if (mode === 'similar') {
+            const q = (state.searchQuery || '').trim();
+            if (q) {
+                const kw = q.split(/\s+/).filter(w => w.length >= 2);
+                filtered = filtered.sort((a, b) => {
+                    const sa = kw.reduce((acc, w) => acc + ((a.title || '').includes(w) ? 2 : 0) + ((a.content || '').includes(w) ? 1 : 0), 0);
+                    const sb = kw.reduce((acc, w) => acc + ((b.title || '').includes(w) ? 2 : 0) + ((b.content || '').includes(w) ? 1 : 0), 0);
+                    return sb - sa;
+                });
+            }
+        }
+        const cap = {};
+        filtered = filtered.filter(p => {
+            const key = p.stock_id || '__none__';
+            cap[key] = (cap[key] || 0) + 1;
+            return cap[key] <= 2;
+        }).slice(0, 6);
+        box.innerHTML = '';
+        const frag = document.createDocumentFragment();
+        filtered.forEach(p => frag.appendChild(createPostElement(p)));
+        box.appendChild(frag);
+        return;
+    }
+    let posts = [];
+    if (state.user) {
+        try {
+            const { data } = await client.rpc('get_recommended_posts', { p_user: state.user.id, p_limit: 6 });
+            posts = data || [];
+        } catch {
+            posts = await fetchPosts('public', null, false);
+        }
+    } else {
+        posts = await fetchPosts('public', null, false);
+    }
+    const mutes = state.relationships.mutes;
+    const blocks = state.relationships.blocks;
+    const notis = state.notInterestedPostIds;
+    let filtered = posts.filter(p => {
+        const uid = p.user_id;
+        const pid = p.id;
+        if (uid && (mutes.has(uid) || blocks.has(uid))) return false;
+        if (notis.has(pid)) return false;
+        return true;
+    });
+    if (mode === 'follow') {
+        const follows = state.relationships.follows;
+        filtered = filtered.filter(p => p.user_id && follows.has(p.user_id));
+    } else if (mode === 'new') {
+        filtered = filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    } else if (mode === 'similar') {
+        const q = (state.searchQuery || '').trim();
+        if (q) {
+            const kw = q.split(/\s+/).filter(w => w.length >= 2);
+            filtered = filtered.sort((a, b) => {
+                const sa = kw.reduce((acc, w) => acc + ((a.title || '').includes(w) ? 2 : 0) + ((a.content || '').includes(w) ? 1 : 0), 0);
+                const sb = kw.reduce((acc, w) => acc + ((b.title || '').includes(w) ? 2 : 0) + ((b.content || '').includes(w) ? 1 : 0), 0);
+                return sb - sa;
+            });
+        }
+    }
+    const cap = {};
+    filtered = filtered.filter(p => {
+        const key = p.stock_id || '__none__';
+        cap[key] = (cap[key] || 0) + 1;
+        return cap[key] <= 2;
+    }).slice(0, 6);
+    if (!filtered.length) {
+        box.innerHTML = '';
+        return;
+    }
+    box.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    filtered.forEach(p => frag.appendChild(createPostElement(p)));
+    box.appendChild(frag);
+    state.recommendedCache[cacheKey] = { ts: Date.now(), posts };
+}
+
+window.setRecommendedMode = function(mode) {
+    state.recommendedMode = mode;
+    ['reco-tab-mix','reco-tab-follow','reco-tab-new','reco-tab-similar'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const active = (mode === 'mix' && id.endsWith('mix')) || (mode === 'follow' && id.endsWith('follow')) || (mode === 'new' && id.endsWith('new')) || (mode === 'similar' && id.endsWith('similar'));
+        el.className = `px-3 py-1.5 text-[11px] rounded-full border ${active ? 'bg-yellow-700 text-black border-yellow-600' : 'bg-[#1C1C1E] text-gray-300 border-gray-800'}`;
+    });
+    loadRecommended();
+};
 
 async function fetchMyRelationships() {
     try {
@@ -2217,7 +2397,7 @@ async function renderPosts(containerId, type, stockName = null) {
     if (!searchContainer) {
         const searchDiv = document.createElement('div');
         searchDiv.id = `search-${type}`;
-        searchDiv.className = 'mb-4 flex gap-2';
+        searchDiv.className = 'mb-2 flex items-center justify-between flex-wrap gap-2';
         const toggleHtml = type === 'public' 
             ? `<label class="flex items-center gap-2 text-xs text-gray-300 px-2">
                     <input type="checkbox" ${state.includeSecretInPlaza ? 'checked' : ''} onchange="toggleIncludeSecretPlaza(this.checked)" class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
@@ -2225,14 +2405,47 @@ async function renderPosts(containerId, type, stockName = null) {
                </label>`
             : '';
         searchDiv.innerHTML = `
-            <input type="text" placeholder="비급 제목 검색..." class="flex-grow bg-gray-800 border border-gray-700 text-white px-3 py-2 rounded-lg text-sm" onkeydown="if(event.key==='Enter') handleSearch('${type}', '${containerId}', '${stockName || ''}', this.value)">
-            <button onclick="handleSearch('${type}', '${containerId}', '${stockName || ''}', this.previousElementSibling.value)" class="bg-gray-700 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-600">검색</button>
+            <input type="text" placeholder="비급 제목 검색..." class="flex-grow bg-gray-800 border border-gray-700 text-white px-2 py-1.5 rounded-lg text-xs h-8" onkeydown="if(event.key==='Enter') handleSearch('${type}', '${containerId}', '${stockName || ''}', this.value)">
+            <button onclick="handleSearch('${type}', '${containerId}', '${stockName || ''}', this.previousElementSibling.value)" class="bg-gray-700 text-white px-3 py-1.5 rounded-lg text-xs h-8 hover:bg-gray-600">검색</button>
             ${toggleHtml}
         `;
         container.parentNode.insertBefore(searchDiv, container);
+        if (type === 'public' && !document.getElementById('plaza-filter-bar')) {
+            const bar = document.createElement('div');
+            bar.id = 'plaza-filter-bar';
+            bar.className = 'flex gap-1';
+            const mk = (id, label, val) => {
+                const b = document.createElement('button');
+                b.id = id;
+                b.className = `px-3 py-1.5 rounded-full text-[11px] border ${state.plazaFilterType === val ? 'bg-yellow-700 text-black border-yellow-600' : 'bg-[#1C1C1E] text-gray-300 border-gray-800'}`;
+                b.textContent = label;
+                b.onclick = () => setPlazaFilter(val);
+                return b;
+            };
+            bar.appendChild(mk('plaza-filter-all','전체','all'));
+            bar.appendChild(mk('plaza-filter-public','공개','public'));
+            bar.appendChild(mk('plaza-filter-secret','객잔','secret'));
+            const left = document.createElement('div');
+            left.className = 'flex items-center gap-2';
+            left.appendChild(bar);
+            const right = document.createElement('div');
+            right.className = 'flex items-center gap-2';
+            // Move search elements into right container
+            Array.from(searchDiv.childNodes).forEach(n => {
+                if (n.tagName === 'INPUT' || n.tagName === 'BUTTON') right.appendChild(n);
+            });
+            searchDiv.innerHTML = '';
+            searchDiv.appendChild(left);
+            searchDiv.appendChild(right);
+        }
     }
 
-    container.innerHTML = '<div class="text-center text-gray-500 py-10">... 비급을 로딩 중 ...</div>';
+    container.innerHTML = Array.from({ length: 3 }).map(() => `
+        <div class="animate-pulse p-3 rounded-xl bg-gray-800/30 border border-gray-800 mb-2">
+            <div class="h-4 bg-gray-700/50 rounded w-2/3 mb-2"></div>
+            <div class="h-3 bg-gray-700/40 rounded w-1/3"></div>
+        </div>
+    `).join('');
     state.searchQuery = ''; 
     
     const posts = await fetchPosts(type, stockName, false);
@@ -2246,6 +2459,9 @@ async function renderPosts(containerId, type, stockName = null) {
     const fragment = document.createDocumentFragment();
     posts.forEach(post => fragment.appendChild(createPostElement(post)));
     container.appendChild(fragment);
+
+    state.lastRenderedType = type;
+    state.lastRenderedPosts = posts;
 
     renderLoadMoreButton(container, type, stockName);
 }
@@ -2268,10 +2484,25 @@ window.handleSearch = async function(type, containerId, stockName, query) {
     container.appendChild(fragment);
 
     renderLoadMoreButton(container, type, stockName || null);
+
+    if (type === 'public') loadRecommended();
 }
 window.toggleIncludeSecretPlaza = function(checked) {
     state.includeSecretInPlaza = !!checked;
+    try { localStorage.setItem('include_secret_plaza', JSON.stringify(state.includeSecretInPlaza)); } catch {}
     state.searchQuery = '';
+    renderPosts('posts-list-public', 'public');
+}
+window.setPlazaFilter = function(val) {
+    state.plazaFilterType = val;
+    try { localStorage.setItem('plaza_filter', val); } catch {}
+    const bar = document.getElementById('plaza-filter-bar');
+    if (bar) {
+        Array.from(bar.children).forEach(btn => {
+            const v = btn.id.endsWith('all') ? 'all' : btn.id.endsWith('public') ? 'public' : 'secret';
+            btn.className = `px-2 py-1 rounded text-[11px] ${state.plazaFilterType === v ? 'bg-yellow-700 text-black' : 'bg-gray-800 text-gray-300'}`;
+        });
+    }
     renderPosts('posts-list-public', 'public');
 }
 
@@ -2303,6 +2534,7 @@ window.openPostDetail = async function(post) {
     state.currentPostId = post.id;
     state.postToEdit = post;
     navigate('post-detail');
+    recordPostClick(post.id);
     
     if (post.type !== 'secret') {
         const newViewCount = (post.view_count || 0) + 1;
@@ -2362,8 +2594,20 @@ window.openPostDetail = async function(post) {
             }
         };
     }
+    const t1 = document.getElementById('detail-include-secret-toggle');
+    if (t1) {
+        t1.checked = !!state.includeSecretInPlaza;
+        t1.onchange = (e) => { toggleIncludeSecretPlaza(e.target.checked); loadRelatedPosts(post); };
+    }
+    const t2 = document.getElementById('detail-include-secret-toggle-modal');
+    if (t2) {
+        t2.checked = !!state.includeSecretInPlaza;
+        t2.onchange = (e) => { toggleIncludeSecretPlaza(e.target.checked); loadRelatedPosts(post); };
+    }
+    renderPrevNextControls(post);
+    await loadRelatedPosts(post);
     await loadComments(post.id);
-    
+    setupCommentAutoResize();
     if (delBtn) {
         delBtn.onclick = () => {
             const cdt = document.getElementById('confirm-delete-title');
@@ -2372,15 +2616,189 @@ window.openPostDetail = async function(post) {
         };
     }
     if (editBtn) editBtn.onclick = () => openPostEditModal(post);
-    
-    // 상세는 전용 뷰로 전환되어 표시되므로 별도 모달 표시 불필요
-    // 히스토리 푸시: 모바일 뒤로가기 지원
     const targetHash = `#post-${post.id}`;
     if (window.location.hash !== targetHash) {
         window.history.pushState({ view: 'post', postId: post.id }, null, targetHash);
     }
 }
 
+async function recordPostClick(postId) {
+    if (!state.user || !postId || !state.dataCollectionEnabled) return;
+    try { await client.from('post_clicks').insert({ user_id: state.user.id, post_id: postId }); } catch {}
+}
+async function recordPostImpression(postId) {
+    if (!state.user || !postId || !state.dataCollectionEnabled) return;
+    if (state.impressed.has(postId)) return;
+    state.impressed.add(postId);
+    try { await client.from('post_impressions').insert({ user_id: state.user.id, post_id: postId }); } catch {}
+}
+let __impObserver = null;
+const __impTimers = {};
+function ensureImpressionObserver() {
+    if (__impObserver) return;
+    __impObserver = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+            const el = entry.target;
+            const pid = el.dataset.postId;
+            if (!pid) return;
+            if (entry.isIntersecting) {
+                if (__impTimers[pid]) clearTimeout(__impTimers[pid]);
+                __impTimers[pid] = setTimeout(() => {
+                    recordPostImpression(pid);
+                }, 1500);
+            } else {
+                if (__impTimers[pid]) {
+                    clearTimeout(__impTimers[pid]);
+                    delete __impTimers[pid];
+                }
+            }
+        });
+    }, { threshold: 0.5 });
+}
+function observePostCard(el, postId) {
+    if (!state.user || !state.dataCollectionEnabled) return;
+    ensureImpressionObserver();
+    try { __impObserver.observe(el); } catch {}
+}
+async function markNotInterested(postId) {
+    if (!state.user || !postId) return;
+    try {
+        await client.from('post_feedbacks').insert({ user_id: state.user.id, post_id: postId, type: 'not_interested' });
+        state.notInterestedPostIds.add(postId);
+        showToast('추천에서 제외했소.', 'success');
+        const el = document.querySelector(`[data-post-id="${postId}"]`);
+        if (el && el.parentNode && el.parentNode.id === 'recommended-feed') el.remove();
+    } catch { showToast('처리에 차질이 있소.', 'error'); }
+}
+async function muteAuthor(targetUserId) {
+    if (!state.user || !targetUserId) return;
+    try {
+        await client.from('user_relationships').insert({ user_id: state.user.id, target_id: targetUserId, type: 'mute' });
+        state.relationships.mutes.add(targetUserId);
+        showToast('작성자를 숨겼소.', 'success');
+        document.querySelectorAll(`[data-post-id]`).forEach(el => {
+            const pid = el.getAttribute('data-post-id');
+        });
+        loadRecommended();
+    } catch { showToast('처리에 차질이 있소.', 'error'); }
+}
+
+function autoResizeTextarea(el) {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(200, Math.max(44, el.scrollHeight)) + 'px';
+}
+
+function setupCommentAutoResize() {
+    const ids = ['comment-input','comment-input-modal'];
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        autoResizeTextarea(el);
+        el.addEventListener('input', () => autoResizeTextarea(el));
+    });
+}
+function renderPrevNextControls(post) {
+    const idx = Array.isArray(state.lastRenderedPosts) ? state.lastRenderedPosts.findIndex(p => p.id === post.id) : -1;
+    const prev = idx > 0 ? state.lastRenderedPosts[idx - 1] : null;
+    const next = (idx >= 0 && idx < (state.lastRenderedPosts.length - 1)) ? state.lastRenderedPosts[idx + 1] : null;
+    const makeBtn = (p, label) => {
+        const b = document.createElement('button');
+        b.className = 'text-[11px] text-gray-400 hover:text-white px-2 py-1 rounded bg-gray-800';
+        b.textContent = label;
+        b.onclick = async () => {
+            const { data: fullPost } = await client.from('posts')
+                .select(`*, profiles:user_id (nickname, post_count, comment_count, avatar_url)`)
+                .eq('id', p.id)
+                .single();
+            if (fullPost) openPostDetail(fullPost);
+        };
+        return b;
+    };
+    ['detail-prev-next','detail-prev-next-modal'].forEach(id => {
+        const container = document.getElementById(id);
+        if (!container) return;
+        container.innerHTML = '';
+        const backBtn = document.createElement('button');
+        backBtn.className = 'text-[11px] text-gray-400 hover:text-white px-2 py-1 rounded bg-gray-800';
+        backBtn.textContent = '목록으로';
+        backBtn.onclick = () => {
+            const t = state.lastRenderedType || 'public';
+            const view = t === 'stock' ? 'stock-board' : t === 'secret' ? 'secret-inn' : 'gangho-plaza';
+            navigate(view);
+        };
+        container.appendChild(backBtn);
+        if (prev) container.appendChild(makeBtn(prev, '이전'));
+        if (next) container.appendChild(makeBtn(next, '다음'));
+    });
+}
+async function loadRelatedPosts(currentPost) {
+    try {
+        let query = client.from('posts')
+            .select(`id, user_id, title, type, stock_id, like_count, created_at, profiles:user_id (nickname)`)
+            .neq('id', currentPost.id)
+            .order('created_at', { ascending: false })
+            .limit(10);
+        if (currentPost.type === 'stock') {
+            query = query.eq('type', 'stock').eq('stock_id', currentPost.stock_id);
+        } else if (currentPost.type === 'public') {
+            query = state.includeSecretInPlaza ? query.in('type', ['public','secret']) : query.eq('type', 'public');
+        } else {
+            query = query.eq('type', 'secret');
+        }
+        const { data } = await query;
+        let posts = data || [];
+        const kw = (currentPost.title || '').split(/\s+/).filter(w => w.length >= 2);
+        const now = Date.now();
+        posts = posts.sort((a, b) => {
+            const sa_kw = kw.reduce((acc, w) => acc + ((a.title || '').includes(w) ? 1 : 0), 0);
+            const sb_kw = kw.reduce((acc, w) => acc + ((b.title || '').includes(w) ? 1 : 0), 0);
+            const sa_like = Math.min(5, Math.max(0, (a.like_count || 0))) / 5; // 0~1
+            const sb_like = Math.min(5, Math.max(0, (b.like_count || 0))) / 5;
+            const sa_time = Math.max(0, 1 - Math.min(1, (now - new Date(a.created_at).getTime()) / (14 * 24 * 3600 * 1000))); // 최근 14일 0~1
+            const sb_time = Math.max(0, 1 - Math.min(1, (now - new Date(b.created_at).getTime()) / (14 * 24 * 3600 * 1000)));
+            const sa = sa_kw * 2 + sa_like + sa_time;
+            const sb = sb_kw * 2 + sb_like + sb_time;
+            return sb - sa;
+        });
+        const blocked = state.relationships.blocks;
+        const filtered = blocked.size ? posts.filter(p => !p.user_id || !blocked.has(p.user_id)) : posts;
+        const follows = state.relationships.follows;
+        const liked = state.likedPostIds || new Set();
+        const final = filtered.sort((a, b) => {
+            const fa = follows.size && a.user_id && follows.has(a.user_id) ? 1 : 0;
+            const fb = follows.size && b.user_id && follows.has(b.user_id) ? 1 : 0;
+            const la = liked.has(a.id) ? 1 : 0;
+            const lb = liked.has(b.id) ? 1 : 0;
+            return (fb + lb) - (fa + la);
+        });
+        ['related-posts','related-posts-modal'].forEach(id => {
+            const list = document.getElementById(id);
+            if (!list) return;
+            list.innerHTML = '';
+            if (!final.length) {
+                list.innerHTML = '<div class="text-center text-gray-500 py-4 text-xs">표시할 비급이 없소.</div>';
+                return;
+            }
+            const frag = document.createDocumentFragment();
+            final.forEach(p => {
+                const el = document.createElement('div');
+                el.className = 'p-2 rounded-lg border border-gray-800 bg-[#1C1C1E] flex items-center justify-between';
+                const date = new Date(p.created_at).toLocaleDateString();
+                el.innerHTML = `<div class="text-xs text-white truncate">${p.title}</div><div class="text-[10px] text-gray-500">${date}</div>`;
+                el.onclick = async () => {
+                    const { data: fullPost } = await client.from('posts')
+                        .select(`*, profiles:user_id (nickname, post_count, comment_count, avatar_url)`)
+                        .eq('id', p.id)
+                        .single();
+                    if (fullPost) openPostDetail(fullPost);
+                };
+                frag.appendChild(el);
+            });
+            list.appendChild(frag);
+        });
+    } catch {}
+}
 async function renderRanking() {
     const guildList = document.getElementById('guild-ranking-list');
     const guildMemberList = document.getElementById('guild-member-ranking-list');
@@ -3261,6 +3679,7 @@ function init() {
             }
         }
     } catch {}
+    setupBackToTop();
 
     const mugongSel = document.getElementById('mu-gong-select');
     MU_GONG_TYPES.forEach(m => mugongSel.innerHTML += `<option value="${m.id}">${m.name}</option>`);
@@ -3564,6 +3983,16 @@ function setupDraggableFab() {
             stateFab.preventClick = false;
         }
     }, true);
+}
+function setupBackToTop() {
+    const btn = document.getElementById('back-to-top-btn');
+    if (!btn) return;
+    const onScroll = () => {
+        const y = window.pageYOffset || document.documentElement.scrollTop || 0;
+        btn.classList.toggle('hidden', y < 200);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
 }
 async function handleNewPostRealtime(newPost) {
     // 현재 보고 있는 뷰 타입 확인

@@ -638,6 +638,138 @@ end $$;
 create index if not exists idx_journal_public_strategy on public.journal_entries(is_public, strategy);
 create index if not exists idx_journal_public_tags on public.journal_entries using gin (tags gin_trgm_ops);
 
+alter view if exists public.predictions_monthly set (security_invoker = true);
+
+create table if not exists public.post_impressions (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  post_id uuid references public.posts(id) on delete cascade not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+alter table public.post_impressions enable row level security;
+drop policy if exists "Impressions insert by owner" on public.post_impressions;
+create policy "Impressions insert by owner"
+  on public.post_impressions for insert
+  with check ( auth.uid() = user_id );
+drop policy if exists "Impressions view by owner" on public.post_impressions;
+create policy "Impressions view by owner"
+  on public.post_impressions for select
+  using ( auth.uid() = user_id );
+create index if not exists idx_post_impressions_user_post on public.post_impressions(user_id, post_id);
+create index if not exists idx_post_impressions_post_created on public.post_impressions(post_id, created_at);
+
+create table if not exists public.post_clicks (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  post_id uuid references public.posts(id) on delete cascade not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+alter table public.post_clicks enable row level security;
+drop policy if exists "Clicks insert by owner" on public.post_clicks;
+create policy "Clicks insert by owner"
+  on public.post_clicks for insert
+  with check ( auth.uid() = user_id );
+drop policy if exists "Clicks view by owner" on public.post_clicks;
+create policy "Clicks view by owner"
+  on public.post_clicks for select
+  using ( auth.uid() = user_id );
+create index if not exists idx_post_clicks_user_post on public.post_clicks(user_id, post_id);
+create index if not exists idx_post_clicks_post_created on public.post_clicks(post_id, created_at);
+
+create index if not exists idx_posts_user_created on public.posts(user_id, created_at);
+create index if not exists idx_posts_content_trgm on public.posts using gin (content gin_trgm_ops);
+
+create or replace function public.get_recommended_posts(p_user uuid, p_limit int default 10)
+returns table (
+  id uuid,
+  user_id uuid,
+  title text,
+  content text,
+  type text,
+  stock_id text,
+  like_count integer,
+  created_at timestamp with time zone,
+  score numeric
+)
+language sql
+security invoker
+as $$
+  with base as (
+    select
+      p.id,
+      p.user_id,
+      p.title,
+      p.content,
+      p.type,
+      p.stock_id,
+      p.like_count,
+      p.created_at,
+      (least(coalesce(p.like_count,0),10) / 10.0)
+      + greatest(0, 1 - least(1, extract(epoch from now() - p.created_at) / (7*24*3600)))
+      + case when exists (
+          select 1 from public.user_relationships ur 
+          where ur.user_id = p_user and ur.target_id = p.user_id and ur.type = 'follow'
+        ) then 0.8 else 0 end
+      + 0.6 * greatest(
+          coalesce((
+            select max(similarity(p.title, lp.title))
+            from public.posts lp
+            where lp.id in (select post_id from public.post_likes where user_id = p_user)
+          ), 0),
+          coalesce((
+            select max(similarity(p.content, lc.content))
+            from public.posts lc
+            where lc.id in (select post_id from public.post_likes where user_id = p_user)
+          ), 0)
+        )
+      + 0.7 * (least(coalesce((select count(*) from public.comments c where c.post_id = p.id),0),5) / 5.0)
+      as score
+    from public.posts p
+    where p.type = 'public'
+    and not exists (
+      select 1 from public.user_relationships urb
+      where urb.user_id = p_user and urb.target_id = p.user_id and urb.type = 'block'
+    )
+    and not exists (
+      select 1 from public.user_relationships urm
+      where urm.user_id = p_user and urm.target_id = p.user_id and urm.type = 'mute'
+    )
+    and not exists (
+      select 1 from public.post_feedbacks pf
+      where pf.user_id = p_user and pf.post_id = p.id and pf.type = 'not_interested'
+    )
+  ),
+  ranked as (
+    select *,
+      row_number() over (partition by stock_id order by score desc, created_at desc) as rn
+    from base
+  )
+  select
+    id, user_id, title, content, type, stock_id, like_count, created_at, score
+  from ranked
+  where rn <= 2
+  order by score desc, created_at desc
+  limit p_limit;
+$$;
+
+create table if not exists public.post_feedbacks (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  post_id uuid references public.posts(id) on delete cascade not null,
+  type text not null check (type in ('not_interested')),
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+alter table public.post_feedbacks enable row level security;
+drop policy if exists "Feedbacks insert by owner" on public.post_feedbacks;
+create policy "Feedbacks insert by owner"
+  on public.post_feedbacks for insert
+  with check ( auth.uid() = user_id );
+drop policy if exists "Feedbacks view by owner" on public.post_feedbacks;
+create policy "Feedbacks view by owner"
+  on public.post_feedbacks for select
+  using ( auth.uid() = user_id );
+create index if not exists idx_post_feedbacks_user_post on public.post_feedbacks(user_id, post_id);
+
 create table if not exists public.journal_monthly_goals (
   user_id uuid references public.profiles(id) on delete cascade not null,
   ym text not null,

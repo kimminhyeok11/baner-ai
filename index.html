@@ -77,6 +77,16 @@
                 <button onclick="navigate('journal-board')" class="text-xs text-yellow-400 hover:text-yellow-300">더보기</button>
             </div>
             <div id="journal-feed" class="mb-4 space-y-1"></div>
+            <div class="mb-2 flex items-center justify-between">
+                <span class="text-sm text-gray-400">오늘의 추천</span>
+            </div>
+            <div id="recommended-tabs" class="flex gap-2 mb-2">
+                <button id="reco-tab-mix" onclick="setRecommendedMode('mix')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">종합</button>
+                <button id="reco-tab-follow" onclick="setRecommendedMode('follow')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">팔로우</button>
+                <button id="reco-tab-new" onclick="setRecommendedMode('new')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">신규</button>
+                <button id="reco-tab-similar" onclick="setRecommendedMode('similar')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">유사 키워드</button>
+            </div>
+            <div id="recommended-feed" class="mb-4 space-y-1"></div>
             <div class="space-y-1" id="posts-list-public"></div>
         </div>
         <div id="news-view" class="app-view hidden">
@@ -134,10 +144,10 @@
                 <div class="mt-3">
                     <div id="detail-content"></div>
                 </div>
-                <div class="flex items-center justify-between mt-4">
-                    <div class="flex gap-4">
-                        <button onclick="toggleLike()" class="flex items-center gap-1 text-gray-400 hover:text-red-500 transition"><span class="text-xl">♥</span> <span id="detail-likes">0</span></button>
-                        <span class="flex items-center gap-1 text-gray-400"><span class="text-xl">👁</span> <span id="detail-views">0</span></span>
+                    <div class="flex items-center justify-between mt-3">
+                    <div class="flex gap-3">
+                        <button onclick="toggleLike()" class="flex items-center gap-1 text-gray-400 hover:text-red-500 transition text-sm"><span class="text-lg">♥</span> <span id="detail-likes" class="text-sm">0</span></button>
+                        <span class="flex items-center gap-1 text-gray-400 text-sm"><span class="text-lg">👁</span> <span id="detail-views" class="text-sm">0</span></span>
                     </div>
                     <div class="flex gap-2">
                         <button id="btn-share-link" class="text-xs bg-gray-800 text-gray-300 px-3 py-1.5 rounded-full hover:bg-gray-700">공유</button>
@@ -147,44 +157,58 @@
                         <button id="delete-post-btn" class="hidden text-xs text-red-500 font-bold px-2">파기</button>
                     </div>
                 </div>
-                <div class="mt-6">
+                <div class="mt-2">
+                    <div id="detail-prev-next" class="flex gap-2"></div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-gray-800">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="text-[11px] text-gray-400">다른 비급</div>
+                        <label class="flex items-center gap-1 text-[11px] text-gray-400">
+                            <input id="detail-include-secret-toggle" type="checkbox" class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
+                            객잔 포함
+                        </label>
+                    </div>
+                    <div id="related-posts" class="space-y-1"></div>
+                </div>
+                <div class="mt-4">
                     <div id="comments-list" class="mb-2 space-y-2"></div>
                     <div class="relative">
                         <textarea id="comment-input" placeholder="전서(댓글)를 남기시오... (Ctrl+Enter 전송)" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)) addComment()" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white pr-12 focus:border-gray-500 focus:outline-none transition resize-y min-h-[44px]"></textarea>
-                        <button onclick="addComment()" class="absolute right-2 top-2 bg-gray-700 text-white p-1.5 rounded-full hover:bg-gray-600">
+                        <button onclick="addComment()" class="absolute right-2 top-2 bg-gray-700 text-white p-2 rounded-full hover:bg-gray-600">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                         </button>
                     </div>
+                    <div class="text-[11px] text-gray-500 mt-1">Ctrl+Enter로 전송하시오</div>
                 </div>
             </div>
         </div>
         
         <!-- My Page View -->
         <div id="my-page" class="app-view hidden">
-            <h2 class="text-2xl font-bold text-white mb-6">나의 본거지 (本據地)</h2>
+            <h2 class="text-xl font-bold text-white mb-4">나의 본거지 (本據地)</h2>
             
             <!-- Profile Card -->
-            <div id="my-profile-card" class="bg-[#1C1C1E] p-6 rounded-3xl shadow-lg border border-gray-800 mb-8 text-center relative overflow-hidden">
+            <div id="my-profile-card" class="bg-[#1C1C1E] p-5 rounded-3xl shadow-lg border border-gray-800 mb-6 text-center relative overflow-hidden">
                 <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-500 to-transparent opacity-50"></div>
                 
-                 <div class="w-20 h-20 bg-gray-700 rounded-full mx-auto mb-4 flex items-center justify-center text-3xl shadow-inner border-2 border-gray-600 relative overflow-hidden">
+                 <div class="w-16 h-16 bg-gray-700 rounded-full mx-auto mb-3 flex items-center justify-center text-2xl shadow-inner border-2 border-gray-600 relative overflow-hidden">
                      <img id="my-avatar" class="w-full h-full object-cover hidden" alt="avatar">
                      <span id="my-profile-icon">👤</span>
                      <span id="my-badge-icon" class="absolute top-0 left-0 w-6 h-6 rounded-full bg-black/60 text-white text-xs flex items-center justify-center border border-gray-700 hidden">🐉</span>
                     <span id="my-level-badge" class="absolute -bottom-1 -right-1 bg-yellow-600 text-black text-[10px] font-bold px-2 py-0.5 rounded-full border border-[#1C1C1E]">입문</span>
                 </div>
                 
-                <h3 id="my-nickname" class="text-xl font-bold text-white mb-1">익명의 협객</h3>
+                <h3 id="my-nickname" class="text-lg font-bold text-white mb-1">익명의 협객</h3>
                 <p id="my-email" class="text-xs text-gray-500 mb-4">입문이 필요하오</p>
                 
-                <div class="flex justify-around border-t border-gray-700 pt-4">
+                <div class="flex justify-around border-t border-gray-700 pt-3">
                     <div class="text-center">
-                        <div class="text-xs text-gray-500 mb-1">비급(글)</div>
-                        <div id="stat-posts" class="text-lg font-bold text-white">0</div>
+                        <div class="text-[11px] text-gray-500 mb-1">비급(글)</div>
+                        <div id="stat-posts" class="text-base font-bold text-white">0</div>
                     </div>
                     <div class="text-center">
-                        <div class="text-xs text-gray-500 mb-1">전서(댓글)</div>
-                        <div id="stat-comments" class="text-lg font-bold text-white">0</div>
+                        <div class="text-[11px] text-gray-500 mb-1">전서(댓글)</div>
+                        <div id="stat-comments" class="text-base font-bold text-white">0</div>
                     </div>
                     <div class="text-center">
                         <div class="text-xs text-gray-500 mb-1">명성(추천)</div>
@@ -388,6 +412,17 @@
                     <p class="text-[11px] text-gray-500 mt-1">프록시가 설정된 경우 도메인 카드에 제목/설명 표시.</p>
                 </div>
                 <div>
+                    <h4 class="text-sm font-bold text-gray-400 mb-3">추천 데이터 수집</h4>
+                    <div class="flex items-center gap-2">
+                        <label class="flex items-center gap-2 text-xs bg-[#1C1C1E] border border-gray-800 rounded-xl px-3 py-2">
+                            <input id="reco-logging-enabled" type="checkbox" class="accent-yellow-500">
+                            <span class="text-gray-300">임프레션·클릭 데이터 수집 허용</span>
+                        </label>
+                        <button onclick="updateRecoLoggingSetting()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">적용</button>
+                    </div>
+                    <p class="text-[11px] text-gray-500 mt-1">추천 품질 향상을 위해 수집하며, 마이페이지에서 언제든 비활성화 가능.</p>
+                </div>
+                <div>
                     <h4 class="text-sm font-bold text-gray-400 mb-3">링크 카드 프록시</h4>
                     <div class="flex items-center gap-2">
                         <input id="proxy-url-input" type="text" class="flex-grow bg-black border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-yellow-500 outline-none" placeholder="예: https://your-proxy.example/meta">
@@ -459,9 +494,10 @@
     </nav>
     
     <!-- Floating Action Button -->
-    <button id="fab-write-btn" onclick="tryOpenWriteModal(getCurrentViewType())" class="fixed bottom-24 right-6 w-14 h-14 bg-yellow-500 text-black rounded-full shadow-2xl flex items-center justify-center text-3xl font-light hover:scale-105 transition-transform z-50">
-        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+    <button id="fab-write-btn" onclick="tryOpenWriteModal(getCurrentViewType())" class="fixed bottom-24 right-4 w-12 h-12 bg-yellow-500/70 text-black rounded-full shadow-lg flex items-center justify-center text-2xl font-light hover:scale-105 transition-transform z-50">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
     </button>
+    <button id="back-to-top-btn" class="hidden fixed bottom-4 left-4 w-10 h-10 bg-gray-800/70 text-white rounded-full shadow-lg flex items-center justify-center text-sm z-50" onclick="window.scrollTo({ top: 0, behavior: 'smooth' })">↑</button>
     
     <!-- Footer -->
     <footer id="site-footer" class="text-center py-8 text-xs text-gray-500">
@@ -617,10 +653,10 @@
             <div class="flex-grow overflow-y-auto p-5 scroll-hidden bg-black">
                 <div id="detail-content-modal" class="post-content-style"></div>
                 
-                <div class="flex items-center justify-between mt-8 pt-4 border-t border-gray-800">
-                    <div class="flex gap-4">
-                         <button onclick="toggleLike()" class="flex items-center gap-1 text-gray-400 hover:text-red-500 transition"><span class="text-xl">♥</span> <span id="detail-likes-modal">0</span></button>
-                         <span class="flex items-center gap-1 text-gray-400"><span class="text-xl">👁</span> <span id="detail-views-modal">0</span></span>
+                    <div class="flex items-center justify-between mt-6 pt-4 border-t border-gray-800">
+                    <div class="flex gap-3">
+                         <button onclick="toggleLike()" class="flex items-center gap-1 text-gray-400 hover:text-red-500 transition text-sm"><span class="text-lg">♥</span> <span id="detail-likes-modal" class="text-sm">0</span></button>
+                         <span class="flex items-center gap-1 text-gray-400 text-sm"><span class="text-lg">👁</span> <span id="detail-views-modal" class="text-sm">0</span></span>
                     </div>
                     <div class="flex gap-2">
                         <button id="btn-share-link-modal" class="text-xs bg-gray-800 text-gray-300 px-3 py-1.5 rounded-full hover:bg-gray-700">공유</button>
@@ -631,15 +667,29 @@
                         <button id="delete-post-btn-modal" class="hidden text-xs text-red-500 font-bold px-2">파기</button>
                     </div>
                 </div>
+                <div class="mt-2">
+                    <div id="detail-prev-next-modal" class="flex gap-2"></div>
+                </div>
 
-                <div class="mt-6 pt-4 border-t border-gray-800">
+                <div class="mt-4 pt-3 border-t border-gray-800">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="text-[11px] text-gray-400">다른 비급</div>
+                        <label class="flex items-center gap-1 text-[11px] text-gray-400">
+                            <input id="detail-include-secret-toggle-modal" type="checkbox" class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
+                            객잔 포함
+                        </label>
+                    </div>
+                    <div id="related-posts-modal" class="space-y-1"></div>
+                </div>
+                <div class="mt-4 pt-2 border-t border-gray-800">
                     <div id="comments-list-modal" class="mb-3 space-y-3"></div>
                     <div class="relative">
                         <textarea id="comment-input-modal" placeholder="전서(댓글)를 남기시오... (Ctrl+Enter 전송)" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)) addComment()" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white pr-12 focus:border-gray-500 focus:outline-none transition resize-y min-h-[44px]"></textarea>
-                        <button onclick="addComment()" class="absolute right-2 top-2 bg-gray-700 text-white p-1.5 rounded-full hover:bg-gray-600">
+                        <button onclick="addComment()" class="absolute right-2 top-2 bg-gray-700 text-white p-2 rounded-full hover:bg-gray-600">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                         </button>
                     </div>
+                    <div class="text-[11px] text-gray-500 mt-1">Ctrl+Enter로 전송하시오</div>
                 </div>
             </div>
 
