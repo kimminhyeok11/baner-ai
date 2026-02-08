@@ -375,9 +375,9 @@ async function loadNews() {
             const l = it.link || '#';
             const s = it.source || '';
             const d = it.published_at ? new Date(it.published_at).toLocaleString() : '';
-            return `<div class="flex items-center justify-between text-xs">
-                <a href="${l}" target="_blank" rel="noopener noreferrer" class="text-gray-200 hover:text-yellow-400 truncate flex-1">${t}</a>
-                <span class="ml-2 text-[10px] text-gray-500">${s}${d ? ' • ' + d : ''}</span>
+            return `<div class="flex items-center justify-between text-xs border-b border-gray-700 last:border-b-0 py-1.5">
+                <a href="${l}" target="_blank" rel="noopener noreferrer" class="text-gray-200 hover:text-yellow-400 truncate min-w-0 flex-1">${t}</a>
+                <span class="ml-2 text-[10px] text-gray-500 whitespace-nowrap">${s}${d ? ' • ' + d : ''}</span>
             </div>`;
         }).join('');
     } catch {
@@ -392,9 +392,9 @@ function renderNewsItems(items, limit = 50) {
         const l = it.link || '#';
         const s = it.source || '';
         const d = it.published_at ? new Date(it.published_at).toLocaleString() : '';
-        return `<div class="flex items-center justify-between text-xs">
-            <a href="${l}" target="_blank" rel="noopener noreferrer" class="text-gray-200 hover:text-yellow-400 flex-1">${t}</a>
-            <span class="ml-2 text-[10px] text-gray-500">${s}${d ? ' • ' + d : ''}</span>
+        return `<div class="flex items-center justify-between text-xs border-b border-gray-700 last:border-b-0 py-1.5">
+            <a href="${l}" target="_blank" rel="noopener noreferrer" class="text-gray-200 hover:text-yellow-400 truncate min-w-0 flex-1">${t}</a>
+            <span class="ml-2 text-[10px] text-gray-500 whitespace-nowrap">${s}${d ? ' • ' + d : ''}</span>
         </div>`;
     }).join('');
 }
@@ -440,13 +440,13 @@ async function loadMiniTrends() {
     const headKosdaq = document.getElementById('mini-kosdaq-head');
     if (!boxKospi || !boxKosdaq) return;
     const render = (inv, info) => {
-        const f = (n)=> (typeof n === 'number') ? n.toLocaleString('ko-KR') : '-';
-        const c = (n)=> (n>0?'text-red-400':'text-blue-400');
+        const f = (n)=> (typeof n === 'number' && isFinite(n)) ? n.toLocaleString('ko-KR') : '-';
+        const c = (n)=> (typeof n === 'number' && n > 0 ? 'text-red-400' : 'text-blue-400');
         return `
             <div class="grid grid-cols-3 gap-1">
-                <div class="text-center"><div class="text-[10px] text-gray-500">개인</div><div class="${c(inv.individual)}">${f(inv.individual)}</div></div>
-                <div class="text-center"><div class="text-[10px] text-gray-500">외국인</div><div class="${c(inv.foreign)}">${f(inv.foreign)}</div></div>
-                <div class="text-center"><div class="text-[10px] text-gray-500">기관</div><div class="${c(inv.institution)}">${f(inv.institution)}</div></div>
+                <div class="text-center"><div class="text-[10px] text-gray-500">개인</div><div class="${c(inv.individual)} whitespace-nowrap">${f(inv.individual)}</div></div>
+                <div class="text-center"><div class="text-[10px] text-gray-500">외국인</div><div class="${c(inv.foreign)} whitespace-nowrap">${f(inv.foreign)}</div></div>
+                <div class="text-center"><div class="text-[10px] text-gray-500">기관</div><div class="${c(inv.institution)} whitespace-nowrap">${f(inv.institution)}</div></div>
             </div>
         `;
     };
@@ -463,8 +463,8 @@ async function loadMiniTrends() {
         boxKospi.innerHTML = '불러오는 중...';
         boxKosdaq.innerHTML = '불러오는 중...';
         const [r1, r2] = await Promise.all([fetchOne('KOSPI'), fetchOne('KOSDAQ')]);
-        if (headKospi) headKospi.innerHTML = `KOSPI <span class="text-white font-bold">${r1.info.point || '-'}</span> <span class="${pc(r1.info.change_percent)}">${r1.info.change_percent || '-'}</span>`;
-        if (headKosdaq) headKosdaq.innerHTML = `KOSDAQ <span class="text-white font-bold">${r2.info.point || '-'}</span> <span class="${pc(r2.info.change_percent)}">${r2.info.change_percent || '-'}</span>`;
+        if (headKospi) headKospi.innerHTML = `<span class="whitespace-nowrap">KOSPI</span><span class="text-right whitespace-nowrap"><span class="text-white font-bold mr-1">${r1.info.point || '-'}</span><span class="${pc(r1.info.change_percent)}">${r1.info.change_percent || '-'}</span></span>`;
+        if (headKosdaq) headKosdaq.innerHTML = `<span class="whitespace-nowrap">KOSDAQ</span><span class="text-right whitespace-nowrap"><span class="text-white font-bold mr-1">${r2.info.point || '-'}</span><span class="${pc(r2.info.change_percent)}">${r2.info.change_percent || '-'}</span></span>`;
         boxKospi.innerHTML = render(r1.inv, r1.info);
         boxKosdaq.innerHTML = render(r2.inv, r2.info);
     } catch {
@@ -1557,7 +1557,7 @@ async function renderMyPage() {
 
 window.switchMyPageTab = function(tab) {
     // UI Toggling
-    ['posts', 'activity', 'bookmarks', 'notifications', 'journal', 'settings'].forEach(t => {
+    ['posts', 'activity', 'bookmarks', 'journal', 'settings'].forEach(t => {
         const btn = document.getElementById(`tab-my-${t}`);
         const area = document.getElementById(`my-${t}-area`);
         
@@ -1577,7 +1577,6 @@ window.switchMyPageTab = function(tab) {
     if (tab === 'posts') loadMyPosts();
     if (tab === 'bookmarks') loadBookmarkedPosts();
     if (tab === 'activity') loadMyActivity('all');
-    if (tab === 'notifications') loadMyNotifications();
     if (tab === 'journal') loadMyJournal();
 }
 
@@ -1653,7 +1652,7 @@ window.switchNotificationsFilter = function(type) {
             }
         }
     });
-    loadMyNotifications();
+    loadNotifications();
 }
 async function loadMyNotifications() {
     const list = document.getElementById('my-notifications-list');
@@ -2351,13 +2350,8 @@ window.openProfileView = async function(userId) {
     } else {
         posts.forEach(p => {
             const el = document.createElement('div');
-            el.className = 'p-3 rounded-lg border border-gray-800 bg-gray-900/40 hover:bg-gray-800 transition cursor-pointer';
-            el.innerHTML = `
-                <div class="flex justify-between items-center">
-                    <span class="text-sm text-white truncate">${p.title}</span>
-                    <span class="text-[10px] text-gray-500">${new Date(p.created_at).toLocaleDateString()}</span>
-                </div>
-            `;
+            el.className = 'py-1.5 border-b border-gray-700 last:border-b-0 flex items-center justify-between cursor-pointer';
+            el.innerHTML = `<span class="min-w-0 flex-1 text-sm text-white truncate">${p.title}</span><span class="text-[10px] text-gray-500 whitespace-nowrap">${new Date(p.created_at).toLocaleDateString()}</span>`;
             el.onclick = () => { closeModal('profileViewModal'); openPostDetail(p); };
             list.appendChild(el);
         });
@@ -2500,7 +2494,7 @@ window.setPlazaFilter = function(val) {
     if (bar) {
         Array.from(bar.children).forEach(btn => {
             const v = btn.id.endsWith('all') ? 'all' : btn.id.endsWith('public') ? 'public' : 'secret';
-            btn.className = `px-2 py-1 rounded text-[11px] ${state.plazaFilterType === v ? 'bg-yellow-700 text-black' : 'bg-gray-800 text-gray-300'}`;
+            btn.className = `px-3 py-1.5 rounded-full text-[11px] border ${state.plazaFilterType === v ? 'bg-yellow-700 text-black border-yellow-600' : 'bg-[#1C1C1E] text-gray-300 border-gray-800'}`;
         });
     }
     renderPosts('posts-list-public', 'public');
@@ -2536,11 +2530,15 @@ window.openPostDetail = async function(post) {
     navigate('post-detail');
     recordPostClick(post.id);
     
-    if (post.type !== 'secret') {
-        const newViewCount = (post.view_count || 0) + 1;
-        await client.from('posts').update({ view_count: newViewCount }).eq('id', post.id);
-        const viewsEl = document.getElementById('detail-views');
-        if (viewsEl) viewsEl.innerText = newViewCount;
+    const viewsEl = document.getElementById('detail-views');
+    if (viewsEl) {
+        viewsEl.innerText = post.view_count || 0;
+        setTimeout(async () => {
+            try {
+                const { data } = await client.from('posts').select('view_count').eq('id', post.id).single();
+                if (data) viewsEl.innerText = data.view_count || 0;
+            } catch {}
+        }, 600);
     }
 
     const titleEl = document.getElementById('detail-title');
@@ -2624,7 +2622,12 @@ window.openPostDetail = async function(post) {
 
 async function recordPostClick(postId) {
     if (!state.user || !postId || !state.dataCollectionEnabled) return;
-    try { await client.from('post_clicks').insert({ user_id: state.user.id, post_id: postId }); } catch {}
+    try {
+        await client.from('post_clicks').upsert(
+            { user_id: state.user.id, post_id: postId },
+            { onConflict: 'user_id,post_id', ignoreDuplicates: true }
+        );
+    } catch {}
 }
 async function recordPostImpression(postId) {
     if (!state.user || !postId || !state.dataCollectionEnabled) return;
@@ -2783,9 +2786,9 @@ async function loadRelatedPosts(currentPost) {
             const frag = document.createDocumentFragment();
             final.forEach(p => {
                 const el = document.createElement('div');
-                el.className = 'p-2 rounded-lg border border-gray-800 bg-[#1C1C1E] flex items-center justify-between';
+                el.className = 'py-1.5 border-b border-gray-700 last:border-b-0 flex items-center justify-between';
                 const date = new Date(p.created_at).toLocaleDateString();
-                el.innerHTML = `<div class="text-xs text-white truncate">${p.title}</div><div class="text-[10px] text-gray-500">${date}</div>`;
+                el.innerHTML = `<div class="min-w-0 flex-1 text-xs text-white truncate">${p.title}</div><div class="text-[10px] text-gray-500 whitespace-nowrap">${date}</div>`;
                 el.onclick = async () => {
                     const { data: fullPost } = await client.from('posts')
                         .select(`*, profiles:user_id (nickname, post_count, comment_count, avatar_url)`)
@@ -3680,6 +3683,7 @@ function init() {
         }
     } catch {}
     setupBackToTop();
+    applyAccessibilitySettings();
 
     const mugongSel = document.getElementById('mu-gong-select');
     MU_GONG_TYPES.forEach(m => mugongSel.innerHTML += `<option value="${m.id}">${m.name}</option>`);
@@ -3781,6 +3785,31 @@ function init() {
     setupDraggableFab();
     setupEditorSelectionTracking();
 }
+window.applyAccessibilitySettings = function() {
+    try {
+        const large = JSON.parse(localStorage.getItem('access_large') || 'false');
+        const contrast = JSON.parse(localStorage.getItem('access_contrast') || 'false');
+        const reading = JSON.parse(localStorage.getItem('reading_mode') || 'false');
+        document.body.classList.toggle('access-large', !!large);
+        document.body.classList.toggle('contrast-high', !!contrast);
+        document.body.classList.toggle('reading-mode', !!reading);
+    } catch {}
+};
+window.toggleLargeText = function() {
+    const on = document.body.classList.toggle('access-large');
+    try { localStorage.setItem('access_large', JSON.stringify(on)); } catch {}
+    showToast(on ? '큰 글씨 모드를 켰소.' : '큰 글씨 모드를 껐소.', 'success');
+};
+window.toggleHighContrast = function() {
+    const on = document.body.classList.toggle('contrast-high');
+    try { localStorage.setItem('access_contrast', JSON.stringify(on)); } catch {}
+    showToast(on ? '고대비 모드를 켰소.' : '고대비 모드를 껐소.', 'success');
+};
+window.toggleReadingMode = function() {
+    const on = document.body.classList.toggle('reading-mode');
+    try { localStorage.setItem('reading_mode', JSON.stringify(on)); } catch {}
+    showToast(on ? '읽기 모드를 켰소.' : '읽기 모드를 껐소.', 'success');
+};
 
 // ------------------------------------------------------------------
 // 10. 글로벌 실시간 (Posts, Messages, StockTags)
@@ -4218,11 +4247,15 @@ async function loadNotifications() {
     const list = document.getElementById('notification-list');
     list.innerHTML = '<div class="text-center text-gray-500 mt-4 text-xs">전갈을 불러오는 중...</div>';
     
-    const { data, error } = await client.from('notifications')
+    let query = client.from('notifications')
         .select('*')
         .eq('user_id', state.user.id)
         .order('created_at', { ascending: false })
-        .limit(20);
+        .limit(50);
+    if (typeof currentNotificationsFilter === 'string' && currentNotificationsFilter !== 'all') {
+        query = query.eq('type', currentNotificationsFilter);
+    }
+    const { data, error } = await query;
 
     if (error || !data) {
         list.innerHTML = '<div class="text-center text-gray-500 mt-4 text-xs">전갈을 불러올 수 없소.</div>';

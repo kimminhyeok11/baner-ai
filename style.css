@@ -51,6 +51,22 @@ body {
     font-size: 18px; /* Senior-friendly default */
 }
 
+@media (min-width: 1024px) {
+    body {
+        font-size: 16px;
+    }
+}
+.access-large body { font-size: 20px; }
+.access-large .nav-btn { padding-top: 0.9rem; padding-bottom: 0.9rem; font-size: 1.05rem; }
+.access-large button { font-size: 1rem; padding: 0.6rem 0.8rem; }
+.access-large input, .access-large textarea { font-size: 1rem; padding: 0.6rem 0.8rem; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+.contrast-high .border-gray-700 { border-color: #8A8A8A !important; }
+.contrast-high .text-gray-400 { color: #E5E5EA !important; }
+.contrast-high .text-gray-500 { color: #D1D1D6 !important; }
+.reading-mode #detail-content { max-width: 70ch; margin: 0 auto; font-size: 20px; line-height: 1.8; }
+.reading-mode #detail-title { font-size: 1.8rem; }
+
 /* Scrollbar hiding */
 .scroll-hidden::-webkit-scrollbar { display: none; }
 .scroll-hidden { -ms-overflow-style: none; scrollbar-width: none; }

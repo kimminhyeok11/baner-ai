@@ -34,7 +34,7 @@
 
     <!-- Header -->
     <header class="flex-none z-40 glass glass-border sticky top-0">
-        <div class="max-w-md mx-auto px-4 h-14 flex items-center justify-between">
+        <div class="max-w-md md:max-w-2xl lg:max-w-4xl xl:max-w-6xl 2xl:max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
             <h1 id="brand-title" class="text-2xl font-black tracking-tighter cursor-pointer select-none transition-all duration-300 hover:scale-105 brand-title" 
                 onclick="navigate('gangho-plaza')">
                 千金門
@@ -49,45 +49,56 @@
                     <span id="msg-badge" class="hidden absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-black"></span>
                 </button>
                 <button id="admin-btn" onclick="openAdminModal()" class="hidden text-xs bg-gray-800 text-yellow-400 px-2 py-1.5 rounded hover:bg-gray-700">관아</button>
+                <div class="hidden md:flex items-center gap-2">
+                    <button onclick="toggleLargeText()" class="text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700">큰 글씨</button>
+                    <button onclick="toggleHighContrast()" class="text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700">고대비</button>
+                    <button onclick="toggleReadingMode()" class="text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700">읽기</button>
+                </div>
                 <div id="auth-buttons"></div>
             </div>
         </div>
     </header>
 
-    <main class="flex-grow overflow-y-auto w-full max-w-md mx-auto p-4 scroll-hidden">
+    <main class="flex-grow overflow-y-auto w-full max-w-md md:max-w-2xl lg:max-w-4xl xl:max-w-6xl 2xl:max-w-7xl mx-auto p-4 scroll-hidden">
         <div id="gangho-plaza" class="app-view">
-            <h2 class="text-2xl font-bold text-white mb-6">강호 광장</h2>
-            <div id="mini-trends" class="grid grid-cols-2 gap-2 mb-3">
-                <div class="bg-[#1C1C1E] p-2 rounded-xl">
-                    <div id="mini-kospi-head" class="text-[11px] text-gray-400 mb-1">KOSPI</div>
-                    <div id="mini-kospi" class="text-[11px] text-gray-300">-</div>
+            <h2 class="text-2xl font-bold text-white mb-4">강호 광장</h2>
+            <div class="grid gap-4 lg:grid-cols-3">
+                <div class="lg:col-span-2">
+                    <div class="mb-2 flex items-center justify-between">
+                        <span class="text-sm text-gray-400">오늘의 추천</span>
+                    </div>
+                    <div id="recommended-tabs" class="flex gap-2 mb-2">
+                        <button id="reco-tab-mix" onclick="setRecommendedMode('mix')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">종합</button>
+                        <button id="reco-tab-follow" onclick="setRecommendedMode('follow')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">팔로우</button>
+                        <button id="reco-tab-new" onclick="setRecommendedMode('new')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">신규</button>
+                        <button id="reco-tab-similar" onclick="setRecommendedMode('similar')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">유사 키워드</button>
+                    </div>
+                    <div id="recommended-feed" class="mb-4 space-y-1"></div>
+                    <div class="space-y-1 lg:space-y-0 lg:grid lg:grid-cols-2 xl:grid-cols-3 lg:gap-2" id="posts-list-public"></div>
                 </div>
-                <div class="bg-[#1C1C1E] p-2 rounded-xl">
-                    <div id="mini-kosdaq-head" class="text-[11px] text-gray-400 mb-1">KOSDAQ</div>
-                    <div id="mini-kosdaq" class="text-[11px] text-gray-300">-</div>
-                </div>
+                <aside>
+                    <div id="mini-trends" class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+                        <div class="bg-[#1C1C1E] p-2 rounded-xl">
+                            <div id="mini-kospi-head" class="grid grid-cols-2 items-center text-[11px] text-gray-400 mb-1"></div>
+                            <div id="mini-kospi" class="text-[11px] text-gray-300">-</div>
+                        </div>
+                        <div class="bg-[#1C1C1E] p-2 rounded-xl">
+                            <div id="mini-kosdaq-head" class="grid grid-cols-2 items-center text-[11px] text-gray-400 mb-1"></div>
+                            <div id="mini-kosdaq" class="text-[11px] text-gray-300">-</div>
+                        </div>
+                    </div>
+                    <div class="mb-2 flex items-center justify-between">
+                        <span class="text-sm text-gray-400">증권 뉴스</span>
+                        <button onclick="navigate('news-view')" class="text-xs text-yellow-400 hover:text-yellow-300">더보기</button>
+                    </div>
+                    <div id="news-feed" class="mb-4 space-y-1"></div>
+                    <div class="mb-2 flex items-center justify-between">
+                        <span class="text-sm text-gray-400">매매 일지</span>
+                        <button onclick="navigate('journal-board')" class="text-xs text-yellow-400 hover:text-yellow-300">더보기</button>
+                    </div>
+                    <div id="journal-feed" class="mb-4 space-y-1"></div>
+                </aside>
             </div>
-            <div class="mb-2 flex items-center justify-between">
-                <span class="text-sm text-gray-400">증권 뉴스</span>
-                <button onclick="navigate('news-view')" class="text-xs text-yellow-400 hover:text-yellow-300">더보기</button>
-            </div>
-            <div id="news-feed" class="mb-4 space-y-1"></div>
-            <div class="mb-2 flex items-center justify-between">
-                <span class="text-sm text-gray-400">매매 일지</span>
-                <button onclick="navigate('journal-board')" class="text-xs text-yellow-400 hover:text-yellow-300">더보기</button>
-            </div>
-            <div id="journal-feed" class="mb-4 space-y-1"></div>
-            <div class="mb-2 flex items-center justify-between">
-                <span class="text-sm text-gray-400">오늘의 추천</span>
-            </div>
-            <div id="recommended-tabs" class="flex gap-2 mb-2">
-                <button id="reco-tab-mix" onclick="setRecommendedMode('mix')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">종합</button>
-                <button id="reco-tab-follow" onclick="setRecommendedMode('follow')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">팔로우</button>
-                <button id="reco-tab-new" onclick="setRecommendedMode('new')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">신규</button>
-                <button id="reco-tab-similar" onclick="setRecommendedMode('similar')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">유사 키워드</button>
-            </div>
-            <div id="recommended-feed" class="mb-4 space-y-1"></div>
-            <div class="space-y-1" id="posts-list-public"></div>
         </div>
         <div id="news-view" class="app-view hidden">
             <h2 class="text-2xl font-bold text-white mb-2">증권 뉴스</h2>
@@ -160,16 +171,6 @@
                 <div class="mt-2">
                     <div id="detail-prev-next" class="flex gap-2"></div>
                 </div>
-                <div class="mt-4 pt-3 border-t border-gray-800">
-                    <div class="flex items-center justify-between mb-2">
-                        <div class="text-[11px] text-gray-400">다른 비급</div>
-                        <label class="flex items-center gap-1 text-[11px] text-gray-400">
-                            <input id="detail-include-secret-toggle" type="checkbox" class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
-                            객잔 포함
-                        </label>
-                    </div>
-                    <div id="related-posts" class="space-y-1"></div>
-                </div>
                 <div class="mt-4">
                     <div id="comments-list" class="mb-2 space-y-2"></div>
                     <div class="relative">
@@ -179,6 +180,16 @@
                         </button>
                     </div>
                     <div class="text-[11px] text-gray-500 mt-1">Ctrl+Enter로 전송하시오</div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-gray-800">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="text-[11px] text-gray-400">다른 비급</div>
+                        <label class="flex items-center gap-1 text-[11px] text-gray-400">
+                            <input id="detail-include-secret-toggle" type="checkbox" class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
+                            객잔 포함
+                        </label>
+                    </div>
+                    <div id="related-posts" class="space-y-1"></div>
                 </div>
             </div>
         </div>
@@ -232,7 +243,6 @@
                 <button onclick="switchMyPageTab('posts')" id="tab-my-posts" class="flex-1 pb-2 text-sm font-medium text-yellow-500 border-b-2 border-yellow-500 transition">나의 비급</button>
                  <button onclick="switchMyPageTab('activity')" id="tab-my-activity" class="flex-1 pb-2 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition">행적</button>
                 <button onclick="switchMyPageTab('bookmarks')" id="tab-my-bookmarks" class="flex-1 pb-2 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition">관심 비급</button>
-                 <button onclick="switchMyPageTab('notifications')" id="tab-my-notifications" class="flex-1 pb-2 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition">전갈</button>
                 <button onclick="switchMyPageTab('journal')" id="tab-my-journal" class="flex-1 pb-2 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition">매매 일지</button>
                 <button onclick="switchMyPageTab('settings')" id="tab-my-settings" class="flex-1 pb-2 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition">면모 정비</button>
             </div>
@@ -318,19 +328,6 @@
                 </div>
             </div>
              
-             <div id="my-notifications-area" class="hidden space-y-4 min-h-[200px]">
-                 <div class="flex justify-between items-center">
-                     <div class="text-xs text-gray-400">나의 전갈</div>
-                     <div class="flex items-center gap-2">
-                         <button onclick="switchNotificationsFilter('all')" id="noti-filter-all" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">전체</button>
-                         <button onclick="switchNotificationsFilter('comment')" id="noti-filter-comment" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">전서</button>
-                         <button onclick="switchNotificationsFilter('like')" id="noti-filter-like" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">명성</button>
-                         <button onclick="switchNotificationsFilter('message')" id="noti-filter-message" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">밀서</button>
-                         <button onclick="markAllNotificationsRead()" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">모두 확인</button>
-                     </div>
-                 </div>
-                 <div id="my-notifications-list" class="space-y-2"></div>
-             </div>
              
              <div id="my-activity-area" class="hidden space-y-4 min-h-[200px]">
                  <div class="flex items-center justify-between">
@@ -485,7 +482,7 @@
     </main>
     
     <nav class="flex-none z-40 glass glass-border bg-[#1C1C1E] pb-safe">
-        <div class="flex justify-around max-w-md mx-auto">
+        <div class="flex justify-around max-w-md md:max-w-2xl lg:max-w-4xl xl:max-w-6xl 2xl:max-w-7xl mx-auto">
             <button onclick="navigate('gangho-plaza')" class="nav-btn flex-1 py-3 text-sm font-medium active">광장</button>
             <button onclick="navigate('stock-board')" class="nav-btn flex-1 py-3 text-sm font-medium">비급</button>
             <button onclick="navigate('secret-inn')" class="nav-btn flex-1 py-3 text-sm font-medium">객잔</button>
@@ -670,17 +667,6 @@
                 <div class="mt-2">
                     <div id="detail-prev-next-modal" class="flex gap-2"></div>
                 </div>
-
-                <div class="mt-4 pt-3 border-t border-gray-800">
-                    <div class="flex items-center justify-between mb-2">
-                        <div class="text-[11px] text-gray-400">다른 비급</div>
-                        <label class="flex items-center gap-1 text-[11px] text-gray-400">
-                            <input id="detail-include-secret-toggle-modal" type="checkbox" class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
-                            객잔 포함
-                        </label>
-                    </div>
-                    <div id="related-posts-modal" class="space-y-1"></div>
-                </div>
                 <div class="mt-4 pt-2 border-t border-gray-800">
                     <div id="comments-list-modal" class="mb-3 space-y-3"></div>
                     <div class="relative">
@@ -690,6 +676,16 @@
                         </button>
                     </div>
                     <div class="text-[11px] text-gray-500 mt-1">Ctrl+Enter로 전송하시오</div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-gray-800">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="text-[11px] text-gray-400">다른 비급</div>
+                        <label class="flex items-center gap-1 text-[11px] text-gray-400">
+                            <input id="detail-include-secret-toggle-modal" type="checkbox" class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
+                            객잔 포함
+                        </label>
+                    </div>
+                    <div id="related-posts-modal" class="space-y-1"></div>
                 </div>
             </div>
 
@@ -844,6 +840,12 @@
             <div class="p-4 border-b border-gray-800 flex justify-between items-center bg-[#1C1C1E]">
                 <h3 class="text-lg font-bold text-white">전갈</h3>
                 <button onclick="closeModal('notificationModal')" class="text-gray-400 hover:text-white">✕</button>
+            </div>
+            <div class="p-3 border-b border-gray-800 flex gap-2">
+                <button onclick="switchNotificationsFilter('all')" id="noti-filter-all" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">전체</button>
+                <button onclick="switchNotificationsFilter('comment')" id="noti-filter-comment" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">전서</button>
+                <button onclick="switchNotificationsFilter('like')" id="noti-filter-like" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">명성</button>
+                <button onclick="switchNotificationsFilter('message')" id="noti-filter-message" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">밀서</button>
             </div>
             <div id="notification-list" class="flex-grow overflow-y-auto p-2 space-y-2">
                 <!-- Notifications injected here -->
