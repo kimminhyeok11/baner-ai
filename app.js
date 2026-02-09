@@ -31,6 +31,7 @@ const state = {
         blocks: new Set(),
         mutes: new Set()
     },
+    includeSecretInReco: (() => { try { return JSON.parse(localStorage.getItem('reco_include_secret') || 'false'); } catch { return false; } })(),
     includeSecretInPlaza: (() => { try { return JSON.parse(localStorage.getItem('include_secret_plaza') || 'true'); } catch { return true; } })(),
     plazaFilterType: (() => { try { return localStorage.getItem('plaza_filter') || 'all'; } catch { return 'all'; } })(),
     lastRenderedType: null,
@@ -43,8 +44,32 @@ const state = {
     notInterestedPostIds: new Set(),
     recommendedMode: 'mix',
     dataCollectionEnabled: (() => { try { return JSON.parse(localStorage.getItem('reco_logging_enabled') || 'true'); } catch { return true; } })(),
-    recommendedCache: {}
+    recommendedCache: {},
+    recoBalanceEnabled: (() => { try { return JSON.parse(localStorage.getItem('reco_balance_enabled') || 'true'); } catch { return true; } })()
 };
+
+async function computeRecentCommentMeta(postIds, hours = 72) {
+    try {
+        const since = new Date(Date.now() - hours * 3600 * 1000).toISOString();
+        const { data } = await client.from('comments')
+            .select('post_id,created_at')
+            .in('post_id', postIds)
+            .gte('created_at', since)
+            .limit(2000);
+        const map = {};
+        (data || []).forEach(r => {
+            const k = r.post_id;
+            const ts = r.created_at;
+            const m = map[k] || { count: 0, lastTs: null };
+            m.count += 1;
+            if (!m.lastTs || (new Date(ts).getTime() > new Date(m.lastTs).getTime())) m.lastTs = ts;
+            map[k] = m;
+        });
+        return map;
+    } catch {
+        return {};
+    }
+}
 
 try {
     const savedProxy = localStorage.getItem('link_preview_proxy');
@@ -57,6 +82,12 @@ const MU_GONG_TYPES = [
     { id: 'dao', name: '태극도법 (장기)', tag: '장기', color: 'text-blue-500' },
     { id: 'auto', name: '오토진법 (자동)', tag: '자동', color: 'text-yellow-500' },
 ];
+const BANK_INFO = {
+    bank_name: '카카오뱅크',
+    account_number: '3333022292950',
+    owner_name: '김민혁',
+    message: '입금 후 아래 양식으로 확인 요청하시오.'
+};
 
 // ------------------------------------------------------------------
 // 2. 유틸리티 함수
@@ -463,10 +494,19 @@ async function loadMiniTrends() {
         boxKospi.innerHTML = '불러오는 중...';
         boxKosdaq.innerHTML = '불러오는 중...';
         const [r1, r2] = await Promise.all([fetchOne('KOSPI'), fetchOne('KOSDAQ')]);
-        if (headKospi) headKospi.innerHTML = `<span class="whitespace-nowrap">KOSPI</span><span class="text-right whitespace-nowrap"><span class="text-white font-bold mr-1">${r1.info.point || '-'}</span><span class="${pc(r1.info.change_percent)}">${r1.info.change_percent || '-'}</span></span>`;
-        if (headKosdaq) headKosdaq.innerHTML = `<span class="whitespace-nowrap">KOSDAQ</span><span class="text-right whitespace-nowrap"><span class="text-white font-bold mr-1">${r2.info.point || '-'}</span><span class="${pc(r2.info.change_percent)}">${r2.info.change_percent || '-'}</span></span>`;
+        const s1 = String(r1.info.change_percent || '').startsWith('-') ? { t: '하락', c: 'text-blue-400 border-blue-600' } : { t: '상승', c: 'text-red-400 border-red-600' };
+        const s2 = String(r2.info.change_percent || '').startsWith('-') ? { t: '하락', c: 'text-blue-400 border-blue-600' } : { t: '상승', c: 'text-red-400 border-red-600' };
+        if (headKospi) headKospi.innerHTML = `<span class="whitespace-nowrap">KOSPI</span><span class="text-right whitespace-nowrap"><span class="text-white font-bold mr-1">${r1.info.point || '-'}</span><span class="${pc(r1.info.change_percent)} mr-1">${r1.info.change_percent || '-'}</span><span class="text-[10px] px-1 py-0.5 rounded-full border ${s1.c}">${s1.t}</span></span>`;
+        if (headKosdaq) headKosdaq.innerHTML = `<span class="whitespace-nowrap">KOSDAQ</span><span class="text-right whitespace-nowrap"><span class="text-white font-bold mr-1">${r2.info.point || '-'}</span><span class="${pc(r2.info.change_percent)} mr-1">${r2.info.change_percent || '-'}</span><span class="text-[10px] px-1 py-0.5 rounded-full border ${s2.c}">${s2.t}</span></span>`;
         boxKospi.innerHTML = render(r1.inv, r1.info);
         boxKosdaq.innerHTML = render(r2.inv, r2.info);
+        const upd = document.getElementById('mini-trends-updated');
+        if (upd) {
+            const d = new Date();
+            const hh = String(d.getHours()).padStart(2,'0');
+            const mm = String(d.getMinutes()).padStart(2,'0');
+            upd.innerText = `갱신: ${hh}:${mm}`;
+        }
     } catch {
         if (headKospi) headKospi.innerHTML = 'KOSPI - -';
         if (headKosdaq) headKosdaq.innerHTML = 'KOSDAQ - -';
@@ -655,14 +695,7 @@ async function updateAuthState(session) {
 function updateHeaderUI() {
     const authContainer = document.getElementById('auth-buttons');
     if (state.user && state.profile) {
-        const level = calculateLevel(state.profile.post_count, state.profile.comment_count);
-        authContainer.innerHTML = `
-            <div class="flex items-center space-x-2">
-                <span class="text-xs text-gray-400 hidden md:inline">경지: <span class="${level.color} font-bold">${level.name}</span></span>
-                <span class="text-xs text-gray-400 hidden sm:inline">반갑소, <span class="text-yellow-400 font-bold">${state.profile.nickname || '협객'}</span> 대협</span>
-                <button onclick="logout()" class="text-xs bg-red-900/50 text-red-200 px-2 py-1 rounded hover:bg-red-900 transition whitespace-nowrap">하산</button>
-            </div>
-        `;
+        authContainer.innerHTML = `<button onclick="logout()" class="text-xs bg-red-900/50 text-red-200 px-2 py-1 rounded hover:bg-red-900 transition whitespace-nowrap">하산</button>`;
     } else {
         authContainer.innerHTML = `
             <button onclick="openModal('authModal')" class="text-xs bg-yellow-600 text-white px-3 py-1.5 rounded font-bold hover:bg-yellow-500 transition shadow-lg animate-pulse whitespace-nowrap">
@@ -671,6 +704,22 @@ function updateHeaderUI() {
         `;
     }
 }
+
+window.toggleHeaderMenu = function(force) {
+    const menu = document.getElementById('header-menu');
+    if (!menu) return;
+    const wantShow = force === true || (force !== false && menu.classList.contains('hidden'));
+    menu.classList.toggle('hidden', !wantShow);
+    if (wantShow) {
+        const onDocClick = (e) => {
+            if (!menu.contains(e.target)) {
+                menu.classList.add('hidden');
+                document.removeEventListener('click', onDocClick);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', onDocClick), 0);
+    }
+};
 
 // ------------------------------------------------------------------
 // 4. 이미지/미디어 처리
@@ -1018,6 +1067,10 @@ function navigate(viewId, pushHistory = true) {
         miniTrendsInterval = setInterval(loadMiniTrends, 60_000);
     }
     if (viewId === 'gangho-plaza') loadJournalFeed();
+    if (viewId === 'gangho-plaza') loadWeeklyDigest();
+    if (viewId === 'gangho-plaza') loadRookieSpotlight();
+    if (viewId === 'gangho-plaza') loadSponsors();
+    if (viewId === 'gangho-plaza') loadMaterialsPreview();
     if (viewId === 'news-view') loadNewsView();
     if (viewId === 'journal-board') loadJournalBoard();
     if (viewId === 'stock-board') {
@@ -1026,8 +1079,175 @@ function navigate(viewId, pushHistory = true) {
     }
     if (viewId === 'secret-inn') renderPosts('posts-list-secret', 'secret');
     if (viewId === 'my-page') renderMyPage();
+    if (viewId === 'materials-board') loadMaterialsBoard();
 }
 
+async function loadWeeklyDigest() {
+    const wrap = document.getElementById('weekly-digest');
+    const listEl = document.getElementById('weekly-digest-list');
+    if (!wrap || !listEl) return;
+    wrap.classList.add('hidden');
+    listEl.innerHTML = '<div class="text-[11px] text-gray-500">요약을 모으는 중...</div>';
+    try {
+        const since = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+        const { data } = await client.from('posts')
+            .select(`id,title,content,created_at,like_count,view_count,profiles:user_id (nickname, avatar_url)`)
+            .gte('created_at', since)
+            .in('type', ['public','secret'])
+            .order('created_at', { ascending: false })
+            .limit(100);
+        const items = (data || []);
+        if (!items.length) { listEl.innerHTML = ''; return; }
+        const score = (p) => Math.log1p(Number(p.like_count || 0)) * 2 + Math.log1p(Number(p.view_count || 0));
+        const top = items.sort((a, b) => score(b) - score(a)).slice(0, 5);
+        listEl.innerHTML = '';
+        top.forEach(p => {
+            const row = document.createElement('div');
+            row.className = 'flex items-center justify-between text-[12px] py-1';
+            const left = document.createElement('div');
+            left.className = 'flex items-center gap-2 min-w-0';
+            const av = document.createElement('img');
+            av.src = p.profiles?.avatar_url || '';
+            av.className = `w-4 h-4 rounded-full border border-gray-700 ${p.profiles?.avatar_url ? '' : 'hidden'}`;
+            const tt = document.createElement('div');
+            tt.className = 'truncate text-gray-200';
+            tt.textContent = p.title || '(제목 없음)';
+            left.appendChild(av);
+            left.appendChild(tt);
+            const right = document.createElement('div');
+            right.className = 'flex items-center gap-3 text-gray-400 whitespace-nowrap flex-shrink-0';
+            right.innerHTML = `
+                <div class="flex items-center gap-1">
+                    <span class="text-[11px]">👁</span>
+                    <span class="w-8 text-right text-[11px]">${p.view_count || 0}</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <span class="text-[11px]">❤️</span>
+                    <span class="w-8 text-right text-[11px]">${p.like_count || 0}</span>
+                </div>`;
+            row.appendChild(left);
+            row.appendChild(right);
+            row.onclick = () => openPostDetail(p);
+            listEl.appendChild(row);
+        });
+        wrap.classList.remove('hidden');
+    } catch {
+        listEl.innerHTML = '';
+    }
+}
+
+async function loadRookieSpotlight() {
+    const wrap = document.getElementById('rookie-spotlight');
+    const listEl = document.getElementById('rookie-spotlight-list');
+    if (!wrap || !listEl) return;
+    wrap.classList.add('hidden');
+    listEl.innerHTML = '<div class="text-[11px] text-gray-500">발굴 중...</div>';
+    try {
+        const since = new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString();
+        const { data } = await client.from('posts')
+            .select(`id,user_id,title,content,created_at,profiles:user_id (nickname, post_count, comment_count, avatar_url)`)
+            .gte('created_at', since)
+            .in('type', ['public','secret'])
+            .order('created_at', { ascending: false })
+            .limit(200);
+        const items = (data || []).filter(p => {
+            const pc = Number(p.profiles?.post_count || 0);
+            return pc <= 3;
+        }).slice(0, 5);
+        listEl.innerHTML = '';
+        if (!items.length) { wrap.classList.add('hidden'); return; }
+        items.forEach(p => {
+            const row = document.createElement('div');
+            row.className = 'flex items-center justify-between text-[12px] py-1';
+            const left = document.createElement('div');
+            left.className = 'flex items-center gap-2 min-w-0';
+            const av = document.createElement('img');
+            av.src = p.profiles?.avatar_url || '';
+            av.className = `w-4 h-4 rounded-full border border-gray-700 ${p.profiles?.avatar_url ? '' : 'hidden'}`;
+            const name = document.createElement('div');
+            name.className = 'text-gray-400 whitespace-nowrap max-w-[30vw] truncate';
+            name.textContent = p.profiles?.nickname || '협객';
+            const tt = document.createElement('div');
+            tt.className = 'truncate text-gray-200 flex-1 min-w-0';
+            tt.textContent = p.title || '(제목 없음)';
+            left.appendChild(av);
+            left.appendChild(name);
+            left.appendChild(tt);
+            const right = document.createElement('div');
+            right.className = 'flex items-center gap-2 text-gray-400 whitespace-nowrap flex-shrink-0';
+            const followBtn = document.createElement('button');
+            followBtn.className = 'text-[10px] text-yellow-400 px-2 py-0.5 rounded border border-yellow-700/40 bg-yellow-900/30 whitespace-nowrap shrink-0';
+            followBtn.textContent = '팔로우';
+            followBtn.onclick = async (e) => {
+                e.stopPropagation();
+                if (!state.user || !p.user_id) return;
+                await toggleRelationship('follow', p.user_id);
+                showToast('팔로우했소.', 'success');
+            };
+            const dateEl = document.createElement('span');
+            dateEl.className = 'text-[10px] whitespace-nowrap';
+            dateEl.textContent = new Date(p.created_at).toLocaleDateString();
+            right.appendChild(followBtn);
+            right.appendChild(dateEl);
+            row.appendChild(left);
+            row.appendChild(right);
+            row.onclick = () => openPostDetail(p);
+            listEl.appendChild(row);
+        });
+        wrap.classList.remove('hidden');
+    } catch {
+        listEl.innerHTML = '';
+    }
+}
+
+async function loadSponsors() {
+    const wrap = document.getElementById('sponsor-section');
+    const listEl = document.getElementById('sponsor-list');
+    if (!wrap || !listEl) return;
+    wrap.classList.add('hidden');
+    listEl.innerHTML = '<div class="text-[11px] text-gray-500">후원 정보를 불러오는 중...</div>';
+    try {
+        const { data } = await client.from('sponsor_slots')
+            .select('id,title,label,link_url,image_url,priority,created_at')
+            .eq('active', true)
+            .order('priority', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(3);
+        const items = data || [];
+        listEl.innerHTML = '';
+        if (!items.length) { wrap.classList.add('hidden'); return; }
+        items.forEach(s => {
+            const row = document.createElement('div');
+            row.className = 'flex items-center justify-between text-[12px] cursor-pointer hover:opacity-90 transition';
+            const left = document.createElement('div');
+            left.className = 'flex items-center gap-2 min-w-0';
+            const img = document.createElement('img');
+            img.src = s.image_url || '';
+            img.className = `w-6 h-6 rounded border border-gray-700 ${s.image_url ? '' : 'hidden'}`;
+            const title = document.createElement('div');
+            title.className = 'truncate text-gray-200';
+            title.textContent = s.title || '스폰서';
+            const badge = document.createElement('span');
+            badge.className = 'text-[10px] text-gray-400 whitespace-nowrap';
+            badge.textContent = s.label || '';
+            left.appendChild(img);
+            left.appendChild(title);
+            if (s.label) left.appendChild(badge);
+            const right = document.createElement('div');
+            right.className = 'flex items-center gap-2 text-gray-400';
+            right.innerHTML = `<span class="text-[10px]">바로가기</span>`;
+            row.appendChild(left);
+            row.appendChild(right);
+            row.onclick = () => {
+                try { window.open(s.link_url, '_blank'); } catch {}
+            };
+            listEl.appendChild(row);
+        });
+        wrap.classList.remove('hidden');
+    } catch {
+        listEl.innerHTML = '';
+    }
+}
 document.addEventListener('DOMContentLoaded', () => {
     const qInput = document.getElementById('news-query-input');
     if (qInput) {
@@ -1047,8 +1267,49 @@ document.addEventListener('DOMContentLoaded', () => {
         const today = new Date().toISOString().split('T')[0];
         jd.value = today;
     }
+    const recoToggle = document.getElementById('reco-include-secret-toggle');
+    if (recoToggle) {
+        try { recoToggle.checked = !!state.includeSecretInReco; } catch {}
+        recoToggle.addEventListener('change', () => {
+            const on = !!recoToggle.checked;
+            window.toggleRecoIncludeSecret(on);
+        });
+    }
+    const recoBalanceToggle = document.getElementById('reco-balance-toggle');
+    if (recoBalanceToggle) {
+        try { recoBalanceToggle.checked = !!state.recoBalanceEnabled; } catch {}
+        recoBalanceToggle.addEventListener('change', () => {
+            const on = !!recoBalanceToggle.checked;
+            state.recoBalanceEnabled = on;
+            try { localStorage.setItem('reco_balance_enabled', JSON.stringify(on)); } catch {}
+            if (document.getElementById('gangho-plaza') && !document.getElementById('gangho-plaza').classList.contains('hidden')) {
+                loadRecommended();
+            }
+        });
+    }
+    const hdrMenu = document.getElementById('header-menu');
+    if (hdrMenu) {
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[onclick*=\"toggleHeaderMenu\"]');
+            if (btn) return;
+            if (!hdrMenu.classList.contains('hidden') && !hdrMenu.contains(e.target)) {
+                hdrMenu.classList.add('hidden');
+            }
+        });
+    }
     try { init(); } catch (e) { console.error('초기화 실패:', e); }
 });
+
+window.toggleHeaderMenu = function(force) {
+    const menu = document.getElementById('header-menu');
+    if (!menu) return;
+    const show = typeof force === 'boolean' ? force : menu.classList.contains('hidden');
+    if (show) {
+        menu.classList.remove('hidden');
+    } else {
+        menu.classList.add('hidden');
+    }
+};
 
 window.saveJournalEntry = async function() {
     if (!state.user) return showToast('입문 후 기록 가능하오.', 'error');
@@ -1099,6 +1360,195 @@ window.saveJournalEntry = async function() {
     if (pub) loadJournalFeed();
 }
 
+async function loadMaterialsPreview() {
+    const box = document.getElementById('materials-preview');
+    if (!box) return;
+    box.innerHTML = '<div class="text-[11px] text-gray-500">강의 자료를 불러오는 중...</div>';
+    try {
+        const { data } = await client.from('materials')
+            .select('id,user_id,title,preview,price,created_at,profiles:user_id (nickname, avatar_url)')
+            .eq('is_active', true)
+            .order('created_at', { ascending: false })
+            .limit(3);
+        const items = data || [];
+        box.innerHTML = '';
+        if (!items.length) return;
+        const frag = document.createDocumentFragment();
+        items.forEach(m => frag.appendChild(createMaterialRow(m)));
+        box.appendChild(frag);
+    } catch {
+        box.innerHTML = '';
+    }
+}
+async function loadMaterialsBoard() {
+    const list = document.getElementById('materials-list');
+    if (!list) return;
+    list.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">강의 자료를 조회하는 중...</div>';
+    try {
+        const { data } = await client.from('materials')
+            .select('id,user_id,title,preview,price,created_at,profiles:user_id (nickname, avatar_url)')
+            .eq('is_active', true)
+            .order('created_at', { ascending: false })
+            .limit(50);
+        list.innerHTML = '';
+        const frag = document.createDocumentFragment();
+        (data || []).forEach(m => frag.appendChild(createMaterialRow(m)));
+        list.appendChild(frag);
+    } catch {
+        list.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">불러오기에 차질이 있소.</div>';
+    }
+}
+function createMaterialRow(m) {
+    const row = document.createElement('div');
+    row.className = 'card cursor-pointer';
+    const av = m.profiles?.avatar_url || '';
+    const name = m.profiles?.nickname || '협객';
+    row.innerHTML = `
+        <div class="flex justify-between items-start mb-1">
+            <h4 class="text-white font-semibold truncate text-base flex-1">${m.title}</h4>
+            <span class="text-[11px] text-yellow-400 ml-2 bg-yellow-900/40 px-1.5 py-0.5 rounded border border-yellow-700/40">${(m.price||0).toLocaleString()}원</span>
+        </div>
+        <div class="text-[11px] text-gray-300 mb-1 truncate">${m.preview || ''}</div>
+        <div class="text-xs text-gray-400 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <img src="${av}" class="w-5 h-5 rounded-full border border-gray-700 ${av ? '' : 'hidden'}">
+                <span class="text-gray-300">${name}</span>
+            </div>
+            <span class="text-gray-500">${new Date(m.created_at).toLocaleDateString()}</span>
+        </div>
+    `;
+    row.onclick = () => openMaterialDetail(m.id);
+    return row;
+}
+window.openMaterialDetail = async function(materialId) {
+    const { data, error } = await client.from('material_contents')
+        .select('content, material_id, materials:material_id (id,title,price,user_id)')
+        .eq('material_id', materialId)
+        .single();
+    const container = document.getElementById('post-detail'); // 재사용
+    navigate('post-detail');
+    const titleEl = document.getElementById('detail-title');
+    const contentEl = document.getElementById('detail-content');
+    const authorEl = document.getElementById('detail-author');
+    const dateEl = document.getElementById('detail-date');
+    const likesEl = document.getElementById('detail-likes');
+    const viewsEl = document.getElementById('detail-views');
+    if (likesEl) likesEl.innerText = 0;
+    if (viewsEl) viewsEl.innerText = 0;
+    if (error || !data) {
+        const { data: meta } = await client.from('materials').select('id,title,price,created_at').eq('id', materialId).single();
+        if (titleEl) titleEl.innerText = meta?.title || '강의 자료';
+        if (contentEl) contentEl.innerHTML = `
+            <div class="bg-[#1C1C1E] p-4 rounded-xl border border-gray-800">
+                <div class="text-sm text-gray-300 mb-2">구매 후 열람 가능하오. 아래 무통장입금 안내를 따르시오.</div>
+                <div class="text-[12px] text-gray-200 bg-black/40 rounded-xl border border-gray-800 p-3 mb-3">
+                    <div class="mb-1"><span class="text-gray-400">은행</span> <span class="text-white font-semibold">${BANK_INFO.bank_name}</span></div>
+                    <div class="mb-1"><span class="text-gray-400">계좌</span> <span class="text-white font-semibold">${BANK_INFO.account_number}</span></div>
+                    <div class="mb-2"><span class="text-gray-400">예금주</span> <span class="text-white font-semibold">${BANK_INFO.owner_name}</span></div>
+                    <div class="text-[11px] text-gray-400">${BANK_INFO.message}</div>
+                </div>
+                <div class="space-y-2">
+                    <div>
+                        <div class="text-xs text-gray-400 mb-1">입금자명</div>
+                        <input id="dep-name" type="text" value="${state.profile?.nickname || ''}" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-sm">
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-400 mb-1">입금액(원)</div>
+                        <input id="dep-amount" type="number" min="0" step="100" value="${Number(meta?.price || 0)}" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-sm">
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-400 mb-1">메모(선택)</div>
+                        <input id="dep-memo" type="text" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-sm">
+                    </div>
+                </div>
+                <div class="flex justify-end mt-3">
+                    <button class="text-sm bg-yellow-600 text-black px-3 py-2 rounded-xl font-bold hover:bg-yellow-500 border border-yellow-700" onclick="requestDeposit('${materialId}')">입금 확인 요청</button>
+                </div>
+            </div>`;
+        if (authorEl) authorEl.innerText = '';
+        if (dateEl) dateEl.innerText = meta ? new Date(meta.created_at).toLocaleString() : '';
+        ['detail-prev-next','detail-prev-next-modal'].forEach(id => {
+            const container2 = document.getElementById(id);
+            if (!container2) return;
+            container2.innerHTML = '';
+            const backBtn2 = document.createElement('button');
+            backBtn2.className = 'text-[11px] text-gray-400 hover:text-white px-2 py-1 rounded bg-gray-800';
+            backBtn2.textContent = '목록으로';
+            backBtn2.onclick = () => navigate('materials-board');
+            container2.appendChild(backBtn2);
+        });
+        return;
+    }
+    const meta = data.materials || {};
+    if (titleEl) titleEl.innerHTML = `${meta.title || '강의 자료'} <span class="ml-2 text-[11px] text-green-400 bg-green-900/40 px-1.5 py-0.5 rounded border border-green-700/40">열람 가능</span>`;
+    if (contentEl) contentEl.innerHTML = linkifyHtml(data.content || '');
+    if (authorEl) authorEl.innerText = '';
+    if (dateEl) dateEl.innerText = '';
+    ['detail-prev-next','detail-prev-next-modal'].forEach(id => {
+        const container2 = document.getElementById(id);
+        if (!container2) return;
+        container2.innerHTML = '';
+        const backBtn2 = document.createElement('button');
+        backBtn2.className = 'text-[11px] text-gray-400 hover:text-white px-2 py-1 rounded bg-gray-800';
+        backBtn2.textContent = '목록으로';
+        backBtn2.onclick = () => navigate('materials-board');
+        container2.appendChild(backBtn2);
+    });
+};
+window.requestDeposit = async function(materialId) {
+    if (!state.user) return showToast('입문 후 구매 가능하오.', 'error');
+    let name = (document.getElementById('dep-name')?.value || '').trim();
+    name = name.replace(/[^가-힣a-zA-Z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+    const amount = parseInt(document.getElementById('dep-amount')?.value || '0', 10);
+    const memo = (document.getElementById('dep-memo')?.value || '').trim();
+    if (!name || isNaN(amount) || amount <= 0) return showToast('입금자명/입금액을 확인하시오.', 'error');
+    try {
+        const { data: meta } = await client.from('materials').select('id,price').eq('id', materialId).single();
+        const price = Number(meta?.price || 0);
+        const diff = Math.abs(price - amount);
+        if (price > 0 && diff > 1000) {
+            return showToast('입금액이 가격과 차이가 큼. 금액을 확인하시오.', 'error');
+        }
+        const { data: exist } = await client.from('deposit_requests')
+            .select('id,status').eq('user_id', state.user.id).eq('material_id', materialId)
+            .in('status', ['requested','pending']).limit(1);
+        if (exist && exist.length) {
+            return showToast('이미 입금 확인 요청이 접수되어 있소.', 'info');
+        }
+    } catch {}
+    try {
+        await client.from('deposit_requests').insert({
+            user_id: state.user.id,
+            material_id: materialId,
+            depositor_name: name,
+            amount,
+            memo: memo || null,
+            status: 'requested'
+        });
+        showToast('입금 확인을 요청했소. 관아에서 확인 후 열람 가능하오.', 'success');
+        openMaterialDetail(materialId);
+    } catch {
+        showToast('요청에 차질이 있소.', 'error');
+    }
+};
+window.saveMaterial = async function() {
+    if (!state.user) return showToast('입문 후 등록 가능하오.', 'error');
+    const title = (document.getElementById('mat-title').value || '').trim();
+    const preview = (document.getElementById('mat-preview').value || '').trim();
+    const price = parseInt(document.getElementById('mat-price').value || '0', 10);
+    const content = (document.getElementById('mat-content').value || '').trim();
+    if (!title || !content || isNaN(price)) return showToast('제목/가격/내용을 확인하시오.', 'error');
+    try {
+        const { data: m } = await client.from('materials').insert({ user_id: state.user.id, title, preview, price, is_active: true }).select('id').single();
+        if (!m || !m.id) throw new Error('no id');
+        await client.from('material_contents').insert({ material_id: m.id, content });
+        showToast('등록 완료했소.', 'success');
+        navigate('materials-board');
+        loadMaterialsBoard();
+    } catch {
+        showToast('등록에 차질이 있소.', 'error');
+    }
+}
 async function loadMyJournal() {
     if (!state.user) return;
     const box = document.getElementById('my-journal-list');
@@ -1220,9 +1670,9 @@ async function loadJournalBoard() {
         const avatar = j.profiles?.avatar_url;
         el.className = 'bg-[#1C1C1E] p-3 rounded-xl border border-gray-800';
         el.innerHTML = `<div class="flex justify-between items-center">
-            <div class="flex items-center gap-2">
-                ${avatar ? `<img src="${avatar}" class="w-6 h-6 rounded-full">` : `<span class="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center text-[12px]">👤</span>`}
-                <div class="text-xs text-gray-400">${author}</div>
+            <div class="flex items-center gap-2 min-w-0">
+                ${avatar ? `<img src="${avatar}" class="w-6 h-6 rounded-full flex-shrink-0">` : `<span class="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center text-[12px] flex-shrink-0">👤</span>`}
+                <div class="text-xs text-gray-400 truncate max-w-[120px]">${author}</div>
             </div>
             <div class="text-[11px] text-gray-500">${j.entry_date}</div>
         </div>
@@ -1232,7 +1682,7 @@ async function loadJournalBoard() {
         </div>
         ${j.strategy ? `<div class="text-[11px] text-gray-400 mt-1">전략: ${j.strategy}</div>` : ''}
         ${j.tags ? `<div class="text-[11px] text-gray-400">태그: ${j.tags}</div>` : ''}
-        ${j.note ? `<div class="text-xs text-gray-300 mt-2">${linkifyHtml(j.note)}</div>` : ''}`;
+        ${j.note ? `<div class="text-xs text-gray-300 mt-2 break-words">${linkifyHtml(j.note)}</div>` : ''}`;
         box.appendChild(el);
     });
 }
@@ -1578,6 +2028,7 @@ window.switchMyPageTab = function(tab) {
     if (tab === 'bookmarks') loadBookmarkedPosts();
     if (tab === 'activity') loadMyActivity('all');
     if (tab === 'journal') loadMyJournal();
+    if (tab === 'settings') loadMyDeposits();
 }
 
 async function loadMyPosts() {
@@ -1642,7 +2093,7 @@ async function loadBookmarkedPosts() {
 let currentNotificationsFilter = 'all';
 window.switchNotificationsFilter = function(type) {
     currentNotificationsFilter = type;
-    ['all','comment','like','message'].forEach(t => {
+    ['all','comment','like','message','purchase'].forEach(t => {
         const btn = document.getElementById(`noti-filter-${t}`);
         if (btn) {
             if (t === type) {
@@ -1678,7 +2129,7 @@ async function loadMyNotifications() {
     data.forEach(noti => {
         const el = document.createElement('div');
         const t = noti.type || 'other';
-        const icon = t === 'comment' ? '💬' : t === 'like' ? '❤️' : t === 'message' ? '✉️' : '🔔';
+        const icon = t === 'comment' ? '💬' : t === 'like' ? '❤️' : t === 'message' ? '✉️' : t === 'purchase' ? '💳' : '🔔';
         const cls = noti.is_read ? 'border-gray-600 opacity-60' : (t === 'comment' ? 'border-blue-500' : t === 'like' ? 'border-red-500' : t === 'message' ? 'border-green-500' : 'border-yellow-500');
         el.className = `bg-gray-800/50 p-3 rounded-lg border-l-4 ${cls}`;
         const when = new Date(noti.created_at).toLocaleString();
@@ -2064,7 +2515,8 @@ async function fetchPosts(type, stockName = null, isLoadMore = false) {
 
     if (stockName) query = query.eq('stock_id', stockName);
     if (state.searchQuery) {
-        query = query.ilike('title', `%${state.searchQuery}%`);
+        const q = state.searchQuery.replace(/,/g, ' ').trim();
+        if (q) query = query.or(`title.ilike.%${q}%,content.ilike.%${q}%`);
     }
 
     const { data, error } = await query;
@@ -2170,6 +2622,7 @@ async function loadRecommended() {
             if (notis.has(pid)) return false;
             return true;
         });
+        if (!state.includeSecretInReco) filtered = filtered.filter(p => p.type !== 'secret');
         if (mode === 'follow') {
             const follows = state.relationships.follows;
             filtered = filtered.filter(p => p.user_id && follows.has(p.user_id));
@@ -2185,13 +2638,43 @@ async function loadRecommended() {
                     return sb - sa;
                 });
             }
+        } else {
+            const follows = state.relationships.follows;
+            const now = Date.now();
+            const q = (state.searchQuery || '').trim();
+            const kw = q ? q.split(/\s+/).filter(w => w.length >= 2) : [];
+            let rcMeta = {};
+            try {
+                const ids = filtered.slice(0, 30).map(p => p.id);
+                rcMeta = await computeRecentCommentMeta(ids, 72);
+            } catch {}
+            const score = (p) => {
+                const t = (p.title || '');
+                const c = (p.content || '');
+                const kwScore = kw.length ? kw.reduce((acc, w) => acc + (t.includes(w) ? 2 : 0) + (c.includes(w) ? 1 : 0), 0) : 0;
+                const followBoost = p.user_id && follows.has(p.user_id) ? 2 : 0;
+                const likes = Number(p.like_count || 0);
+                const views = Number(p.view_count || 0);
+                const react = Math.log1p(likes) * 1.5 + Math.log1p(views) * 0.5;
+                const ageHrs = Math.max(0, (now - new Date(p.created_at).getTime()) / 3600000);
+                const recency = Math.exp(-ageHrs / 72) * 3;
+                const authorStats = p.profiles ? (Math.log1p(Number(p.profiles.post_count || 0)) + Math.log1p(Number(p.profiles.comment_count || 0))) * 0.3 : 0;
+                const rc = rcMeta[p.id] || { count: 0, lastTs: null };
+                const recentComments = Math.log1p(Number(rc.count || 0)) * 1.2;
+                const lastRecency = rc.lastTs ? Math.exp(-Math.max(0, (now - new Date(rc.lastTs).getTime()) / 3600000) / 24) * 1.5 : 0;
+                return kwScore + followBoost + react + recency + authorStats + recentComments + lastRecency;
+            };
+            filtered = filtered.sort((a, b) => score(b) - score(a));
         }
-        const cap = {};
-        filtered = filtered.filter(p => {
-            const key = p.stock_id || '__none__';
-            cap[key] = (cap[key] || 0) + 1;
-            return cap[key] <= 2;
-        }).slice(0, 6);
+        if (state.recoBalanceEnabled) {
+            const cap = {};
+            filtered = filtered.filter(p => {
+                const key = p.stock_id || '__none__';
+                cap[key] = (cap[key] || 0) + 1;
+                return cap[key] <= 2;
+            });
+        }
+        filtered = filtered.slice(0, 6);
         box.innerHTML = '';
         const frag = document.createDocumentFragment();
         filtered.forEach(p => frag.appendChild(createPostElement(p)));
@@ -2202,12 +2685,24 @@ async function loadRecommended() {
     if (state.user) {
         try {
             const { data } = await client.rpc('get_recommended_posts', { p_user: state.user.id, p_limit: 6 });
-            posts = data || [];
+            posts = (data || []).filter(p => state.includeSecretInReco ? true : p.type !== 'secret');
         } catch {
-            posts = await fetchPosts('public', null, false);
+            if (state.includeSecretInReco) {
+                const pub = await fetchPosts('public', null, false);
+                const inn = await fetchPosts('secret', null, false);
+                posts = [...pub, ...inn];
+            } else {
+                posts = await fetchPosts('public', null, false);
+            }
         }
     } else {
-        posts = await fetchPosts('public', null, false);
+        if (state.includeSecretInReco) {
+            const pub = await fetchPosts('public', null, false);
+            const inn = await fetchPosts('secret', null, false);
+            posts = [...pub, ...inn];
+        } else {
+            posts = await fetchPosts('public', null, false);
+        }
     }
     const mutes = state.relationships.mutes;
     const blocks = state.relationships.blocks;
@@ -2219,6 +2714,7 @@ async function loadRecommended() {
         if (notis.has(pid)) return false;
         return true;
     });
+    if (!state.includeSecretInReco) filtered = filtered.filter(p => p.type !== 'secret');
     if (mode === 'follow') {
         const follows = state.relationships.follows;
         filtered = filtered.filter(p => p.user_id && follows.has(p.user_id));
@@ -2234,15 +2730,61 @@ async function loadRecommended() {
                 return sb - sa;
             });
         }
+    } else {
+        const follows = state.relationships.follows;
+        const now = Date.now();
+        const q = (state.searchQuery || '').trim();
+        const kw = q ? q.split(/\s+/).filter(w => w.length >= 2) : [];
+        let rcMap = {};
+        try {
+            const ids = filtered.slice(0, 30).map(p => p.id);
+            rcMap = await computeRecentCommentCounts(ids, 72);
+        } catch {}
+        const score = (p) => {
+            const t = (p.title || '');
+            const c = (p.content || '');
+            const kwScore = kw.length ? kw.reduce((acc, w) => acc + (t.includes(w) ? 2 : 0) + (c.includes(w) ? 1 : 0), 0) : 0;
+            const followBoost = p.user_id && follows.has(p.user_id) ? 2 : 0;
+            const likes = Number(p.like_count || 0);
+            const views = Number(p.view_count || 0);
+            const react = Math.log1p(likes) * 1.5 + Math.log1p(views) * 0.5;
+            const ageHrs = Math.max(0, (now - new Date(p.created_at).getTime()) / 3600000);
+            const recency = Math.exp(-ageHrs / 72) * 3;
+            const authorStats = p.profiles ? (Math.log1p(Number(p.profiles.post_count || 0)) + Math.log1p(Number(p.profiles.comment_count || 0))) * 0.3 : 0;
+            const recentComments = Math.log1p(Number(rcMap[p.id] || 0)) * 1.2;
+            return kwScore + followBoost + react + recency + authorStats + recentComments;
+        };
+        filtered = filtered.sort((a, b) => score(b) - score(a));
     }
-    const cap = {};
-    filtered = filtered.filter(p => {
-        const key = p.stock_id || '__none__';
-        cap[key] = (cap[key] || 0) + 1;
-        return cap[key] <= 2;
-    }).slice(0, 6);
+    if (state.recoBalanceEnabled) {
+        const cap = {};
+        filtered = filtered.filter(p => {
+            const key = p.stock_id || '__none__';
+            cap[key] = (cap[key] || 0) + 1;
+            return cap[key] <= 2;
+        });
+    }
+    filtered = filtered.slice(0, 6);
     if (!filtered.length) {
-        box.innerHTML = '';
+        box.innerHTML = '<div class="text-[11px] text-gray-500 mb-1">최근 인기 비급</div>';
+        try {
+            const { data: top } = await client.from('posts')
+                .select(`*, profiles:user_id (nickname, post_count, comment_count, avatar_url)`)
+                .order('like_count', { ascending: false })
+                .order('created_at', { ascending: false })
+                .limit(5);
+            const mutes = state.relationships.mutes;
+            const blocks = state.relationships.blocks;
+            let items = (top || []).filter(p => {
+                const uid = p.user_id;
+                if (uid && (mutes.has(uid) || blocks.has(uid))) return false;
+                return true;
+            });
+            if (!state.includeSecretInReco) items = items.filter(p => p.type !== 'secret');
+            const frag2 = document.createDocumentFragment();
+            items.forEach(p => frag2.appendChild(createPostElement(p)));
+            box.appendChild(frag2);
+        } catch {}
         return;
     }
     box.innerHTML = '';
@@ -3805,6 +4347,13 @@ window.toggleHighContrast = function() {
     try { localStorage.setItem('access_contrast', JSON.stringify(on)); } catch {}
     showToast(on ? '고대비 모드를 켰소.' : '고대비 모드를 껐소.', 'success');
 };
+window.toggleRecoIncludeSecret = function(on) {
+    state.includeSecretInReco = !!on;
+    try { localStorage.setItem('reco_include_secret', JSON.stringify(!!on)); } catch {}
+    if (document.getElementById('gangho-plaza') && !document.getElementById('gangho-plaza').classList.contains('hidden')) {
+        loadRecommended();
+    }
+};
 window.toggleReadingMode = function() {
     const on = document.body.classList.toggle('reading-mode');
     try { localStorage.setItem('reading_mode', JSON.stringify(on)); } catch {}
@@ -3943,6 +4492,21 @@ function setupDraggableFab() {
     if (saved) {
         try {
             const { x, y } = JSON.parse(saved);
+            btn.style.left = `${x}px`;
+            btn.style.top = `${y}px`;
+            btn.style.right = 'auto';
+            btn.style.bottom = 'auto';
+            btn.style.position = 'fixed';
+        } catch {}
+    } else {
+        try {
+            const nav = document.querySelector('nav');
+            const rect = nav ? nav.getBoundingClientRect() : { height: 56 };
+            const w = btn.offsetWidth || 56;
+            const h = btn.offsetHeight || 56;
+            const margin = 12;
+            const x = Math.max(window.innerWidth - w - margin, margin);
+            const y = Math.max(window.innerHeight - (rect.height || 56) - h - margin, margin);
             btn.style.left = `${x}px`;
             btn.style.top = `${y}px`;
             btn.style.right = 'auto';
@@ -4270,7 +4834,7 @@ async function loadNotifications() {
 
     list.innerHTML = data.map(noti => {
         const t = noti.type || 'other';
-        const icon = t === 'comment' ? '💬' : t === 'like' ? '❤️' : t === 'message' ? '✉️' : '🔔';
+        const icon = t === 'comment' ? '💬' : t === 'like' ? '❤️' : t === 'message' ? '✉️' : t === 'purchase' ? '💳' : '🔔';
         const cls = t === 'comment' ? 'border-blue-500' : t === 'like' ? 'border-red-500' : t === 'message' ? 'border-green-500' : 'border-yellow-500';
         const when = new Date(noti.created_at).toLocaleString();
         const btn = noti.link ? `<button onclick="handleNotificationClick('${noti.link}', '${noti.id}')" class="text-[10px] bg-gray-700 px-2 py-1 rounded hover:bg-gray-600">이동</button>` : '';
@@ -4296,6 +4860,10 @@ window.handleNotificationClick = async function(link, notiId) {
         if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(postId)) return;
         const { data } = await client.from('posts').select(`*, profiles:user_id (nickname)`).eq('id', postId).single();
         if (data) openPostDetail(data);
+    } else if (link.startsWith('material:')) {
+        const materialId = link.split(':')[1];
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(materialId)) return;
+        openMaterialDetail(materialId);
     }
 }
 
@@ -4412,9 +4980,17 @@ window.switchAdminTab = function(tab) {
     document.getElementById('admin-reports-area').classList.add('hidden');
     document.getElementById('admin-users-area').classList.add('hidden');
     document.getElementById('admin-broadcast-area').classList.add('hidden');
+    const depArea = document.getElementById('admin-deposits-area');
+    if (depArea) depArea.classList.add('hidden');
     document.getElementById('admin-tab-reports').classList.remove('bg-yellow-700','text-black');
     document.getElementById('admin-tab-users').classList.remove('bg-yellow-700','text-black');
     document.getElementById('admin-tab-broadcast').classList.remove('bg-yellow-700','text-black');
+    const depTab = document.getElementById('admin-tab-deposits');
+    if (depTab) depTab.classList.remove('bg-yellow-700','text-black');
+    if (state.realtimeChannels['admin_deposits'] && tab !== 'deposits') {
+        client.removeChannel(state.realtimeChannels['admin_deposits']);
+        delete state.realtimeChannels['admin_deposits'];
+    }
     if (tab === 'reports') {
         document.getElementById('admin-reports-area').classList.remove('hidden');
         document.getElementById('admin-tab-reports').classList.add('bg-yellow-700','text-black');
@@ -4426,6 +5002,16 @@ window.switchAdminTab = function(tab) {
     } else if (tab === 'broadcast') {
         document.getElementById('admin-broadcast-area').classList.remove('hidden');
         document.getElementById('admin-tab-broadcast').classList.add('bg-yellow-700','text-black');
+    } else if (tab === 'deposits') {
+        if (depArea) depArea.classList.remove('hidden');
+        if (depTab) depTab.classList.add('bg-yellow-700','text-black');
+        loadAdminDeposits();
+        ensureChannel('admin_deposits', () =>
+            client.channel('public:deposit_requests')
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'deposit_requests' }, () => loadAdminDeposits())
+                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'deposit_requests' }, () => loadAdminDeposits())
+                .subscribe()
+        );
     }
 }
 
@@ -4456,6 +5042,93 @@ async function loadAdminReports() {
         </div>
     `).join('');
 }
+
+async function loadAdminDeposits() {
+    const filter = document.getElementById('deposits-filter')?.value || 'requested';
+    const qtext = (document.getElementById('deposits-search')?.value || '').trim().toLowerCase();
+    const list = document.getElementById('admin-deposits-list');
+    if (!list) return;
+    list.innerHTML = '<div class="text-center text-gray-500 mt-4 text-xs">입금 확인 요청을 불러오는 중...</div>';
+    let q = client.from('deposit_requests')
+        .select('id,user_id,material_id,depositor_name,amount,memo,status,created_at,materials:material_id (title, price), profiles:user_id (nickname)')
+        .order('created_at', { ascending: false });
+    if (filter !== 'all') q = q.eq('status', filter);
+    const { data, error } = await q;
+    if (error) {
+        list.innerHTML = '<div class="text-center text-gray-500 mt-6 text-xs">불러오기에 차질이 생겼소.</div>';
+        return;
+    }
+    let rows = data || [];
+    if (qtext) {
+        rows = rows.filter(r => {
+            const a = (r.depositor_name || '').toLowerCase();
+            const b = (r.materials?.title || '').toLowerCase();
+            const c = (r.profiles?.nickname || '').toLowerCase();
+            return a.includes(qtext) || b.includes(qtext) || c.includes(qtext);
+        });
+    }
+    if (!rows.length) {
+        list.innerHTML = '<div class="text-center text-gray-500 mt-6 text-xs">표시할 요청이 없소.</div>';
+        return;
+    }
+    list.innerHTML = rows.map(r => `
+        <div class="p-3 rounded-lg border border-gray-800 bg-gray-900/40">
+            <div class="flex items-center justify-between">
+                <div class="text-xs text-gray-400 mb-1">${new Date(r.created_at).toLocaleString()} · 상태: ${r.status}</div>
+                <input type="checkbox" class="dep-select w-4 h-4 accent-yellow-500" data-id="${r.id}">
+            </div>
+            <div class="text-sm text-white mb-1">${r.materials?.title || '강의 자료'} · <span class="text-yellow-400">${(r.materials?.price||0).toLocaleString()}원</span></div>
+            <div class="text-[12px] text-gray-300 mb-1">입금자명: <span class="text-white">${r.depositor_name}</span> · 금액: <span class="text-white">${Number(r.amount).toLocaleString('ko-KR')}원</span></div>
+            ${r.memo ? `<div class="text-[11px] text-gray-400 mb-2">메모: ${r.memo}</div>` : ''}
+            <div class="flex gap-2">
+                <button onclick="confirmDeposit('${r.id}')" class="px-2 py-1 text-xs bg-green-700 text-white rounded">입금 확인</button>
+                <button onclick="cancelDeposit('${r.id}')" class="px-2 py-1 text-xs bg-gray-700 text-white rounded">취소</button>
+            </div>
+        </div>
+    `).join('');
+}
+window.confirmSelectedDeposits = async function() {
+    const boxes = Array.from(document.querySelectorAll('#admin-deposits-list .dep-select:checked'));
+    if (!boxes.length) return showToast('선택된 요청이 없소.', 'info');
+    const ids = boxes.map(b => b.getAttribute('data-id')).filter(Boolean);
+    for (const id of ids) {
+        await client.from('deposit_requests').update({ status: 'confirmed', confirmed_by: state.user?.id || null }).eq('id', id);
+    }
+    showToast('선택한 요청을 확인했소.', 'success');
+    loadAdminDeposits();
+};
+window.cancelSelectedDeposits = async function() {
+    const boxes = Array.from(document.querySelectorAll('#admin-deposits-list .dep-select:checked'));
+    if (!boxes.length) return showToast('선택된 요청이 없소.', 'info');
+    const ids = boxes.map(b => b.getAttribute('data-id')).filter(Boolean);
+    for (const id of ids) {
+        await client.from('deposit_requests').update({ status: 'cancelled', confirmed_by: state.user?.id || null }).eq('id', id);
+    }
+    showToast('선택한 요청을 취소했소.', 'success');
+    loadAdminDeposits();
+};
+
+window.confirmDeposit = async function(id) {
+    if (!state.user || state.profile?.role !== 'admin') return showToast('방장 전용이오.', 'error');
+    const { error } = await client.from('deposit_requests').update({ status: 'confirmed', confirmed_by: state.user.id }).eq('id', id);
+    if (error) {
+        showToast('확인 처리에 차질이 생겼소.', 'error');
+    } else {
+        showToast('입금 확인 처리했소.', 'success');
+        loadAdminDeposits();
+    }
+};
+
+window.cancelDeposit = async function(id) {
+    if (!state.user || state.profile?.role !== 'admin') return showToast('방장 전용이오.', 'error');
+    const { error } = await client.from('deposit_requests').update({ status: 'cancelled', confirmed_by: state.user.id }).eq('id', id);
+    if (error) {
+        showToast('취소 처리에 차질이 생겼소.', 'error');
+    } else {
+        showToast('요청을 취소했소.', 'success');
+        loadAdminDeposits();
+    }
+};
 
 async function loadAdminUsers() {
     const q = document.getElementById('admin-user-q').value.trim();
@@ -4509,3 +5182,26 @@ window.sendBroadcast = async function() {
     else showToast('공지 발송을 마쳤소.', 'success');
 }
 document.addEventListener('DOMContentLoaded', init);
+
+async function loadMyDeposits() {
+    if (!state.user) return;
+    const list = document.getElementById('my-deposits-list');
+    if (!list) return;
+    list.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">불러오는 중...</div>';
+    const { data, error } = await client.from('deposit_requests')
+        .select('id,material_id,depositor_name,amount,memo,status,created_at,materials:material_id (title, price)')
+        .eq('user_id', state.user.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+    if (error) { list.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">불러오기에 차질이 있소.</div>'; return; }
+    const rows = data || [];
+    if (!rows.length) { list.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">요청 내역이 없소.</div>'; return; }
+    list.innerHTML = rows.map(r => `
+        <div class="p-3 rounded-lg border border-gray-800 bg-gray-900/40">
+            <div class="text-xs text-gray-400 mb-1">${new Date(r.created_at).toLocaleString()} · 상태: ${r.status}</div>
+            <div class="text-sm text-white mb-1">${r.materials?.title || '강의 자료'} · <span class="text-yellow-400">${(r.materials?.price||0).toLocaleString()}원</span></div>
+            <div class="text-[12px] text-gray-300">입금자명: <span class="text-white">${r.depositor_name}</span> · 금액: <span class="text-white">${Number(r.amount).toLocaleString('ko-KR')}원</span></div>
+            ${r.memo ? `<div class="text-[11px] text-gray-400 mt-1">메모: ${r.memo}</div>` : ''}
+        </div>
+    `).join('');
+}

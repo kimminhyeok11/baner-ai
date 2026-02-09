@@ -33,13 +33,13 @@
     <div id="toast-container" class="fixed bottom-20 left-1/2 transform -translate-x-1/2 z-[100] flex flex-col gap-2 w-max max-w-[90vw]"></div>
 
     <!-- Header -->
-    <header class="flex-none z-40 glass glass-border sticky top-0">
-        <div class="max-w-md mx-auto px-4 h-14 flex items-center justify-between">
-            <h1 id="brand-title" class="text-2xl font-black tracking-tighter cursor-pointer select-none transition-all duration-300 hover:scale-105 brand-title" 
+    <header class="flex-none z-40 glass glass-border sticky top-0 pt-safe">
+        <div class="w-full px-3 sm:px-4 h-14 flex items-center justify-between">
+            <h1 id="brand-title" class="whitespace-nowrap text-xl sm:text-2xl font-black tracking-tighter cursor-pointer select-none transition-all duration-300 hover:scale-105 brand-title" 
                 onclick="navigate('gangho-plaza')">
                 千金門
             </h1>
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
                 <button onclick="openNotificationModal()" class="relative p-2 text-gray-400 hover:text-white transition">
                     <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
                     <span id="noti-badge" class="hidden absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-black"></span>
@@ -49,12 +49,31 @@
                     <span id="msg-badge" class="hidden absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-black"></span>
                 </button>
                 <button id="admin-btn" onclick="openAdminModal()" class="hidden text-xs bg-gray-800 text-yellow-400 px-2 py-1.5 rounded hover:bg-gray-700">관아</button>
-                <div class="hidden md:flex items-center gap-2">
-                    <button onclick="toggleLargeText()" class="text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700">큰 글씨</button>
-                    <button onclick="toggleHighContrast()" class="text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700">고대비</button>
-                    <button onclick="toggleReadingMode()" class="text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700">읽기</button>
-                </div>
+                <button onclick="toggleHeaderMenu()" class="md:hidden p-2 text-gray-400 hover:text-white transition" aria-label="모바일 메뉴">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                </button>
                 <div id="auth-buttons"></div>
+            </div>
+            <div id="header-menu" class="hidden absolute right-2 top-14 bg-[#1C1C1E] border border-gray-800 rounded-xl shadow-lg p-2 w-44 space-y-2 md:hidden">
+                <div class="space-y-1">
+                    <div class="text-[10px] text-gray-500 px-1">빠른 동작</div>
+                    <button onclick="tryOpenWriteModal('public'); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">글쓰기(공개)</button>
+                    <button onclick="tryOpenWriteModal('secret'); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">글쓰기(객잔)</button>
+                    <button onclick="navigate('material-upload'); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">자료 올리기</button>
+                </div>
+                <div class="space-y-1 pt-1 border-t border-gray-800">
+                    <div class="text-[10px] text-gray-500 px-1">바로가기</div>
+                    <button onclick="navigate('gangho-plaza'); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">광장</button>
+                    <button onclick="navigate('news-view'); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">뉴스</button>
+                    <button onclick="navigate('materials-board'); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">자료</button>
+                    <button onclick="navigate('journal-board'); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">일지</button>
+                    <button onclick="navigate('secret-inn'); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">객잔</button>
+                </div>
+                <div class="space-y-1 pt-1 border-t border-gray-800">
+                    <div class="text-[10px] text-gray-500 px-1">접근성</div>
+                    <button onclick="toggleLargeText(); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">큰 글씨</button>
+                    <button onclick="toggleHighContrast(); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">고대비</button>
+                    <button onclick="toggleReadingMode(); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">읽기</button>
             </div>
         </div>
     </header>
@@ -62,14 +81,35 @@
     <main class="flex-grow overflow-y-auto w-full max-w-md mx-auto p-4 scroll-hidden">
         <div id="gangho-plaza" class="app-view">
             <h2 class="text-2xl font-bold text-white mb-6">강호 광장</h2>
-            <div id="mini-trends" class="grid grid-cols-2 gap-2 mb-3">
-                <div class="bg-[#1C1C1E] p-2 rounded-xl">
-                    <div id="mini-kospi-head" class="text-[11px] text-gray-400 mb-1">KOSPI</div>
-                    <div id="mini-kospi" class="text-[11px] text-gray-300">-</div>
+            <div id="mini-trends" class="mb-3">
+                <div class="bg-[#1C1C1E] p-2 rounded-xl border border-gray-800">
+                    <div>
+                        <div id="mini-kospi-head" class="text-[11px] text-gray-400 mb-1">KOSPI</div>
+                        <div id="mini-kospi" class="text-[11px] text-gray-300">-</div>
+                    </div>
+                    <div class="mt-2 pt-2 border-t border-gray-800">
+                        <div id="mini-kosdaq-head" class="text-[11px] text-gray-400 mb-1">KOSDAQ</div>
+                        <div id="mini-kosdaq" class="text-[11px] text-gray-300">-</div>
+                    </div>
                 </div>
-                <div class="bg-[#1C1C1E] p-2 rounded-xl">
-                    <div id="mini-kosdaq-head" class="text-[11px] text-gray-400 mb-1">KOSDAQ</div>
-                    <div id="mini-kosdaq" class="text-[11px] text-gray-300">-</div>
+            </div>
+            <div id="mini-trends-updated" class="text-[10px] text-gray-500 mb-4">갱신: -</div>
+            <div id="weekly-digest" class="mb-3 hidden">
+                <div class="bg-[#1C1C1E] rounded-xl p-3 border border-gray-800">
+                    <div class="text-sm text-white font-bold mb-2">주간 하이라이트</div>
+                    <div id="weekly-digest-list" class="space-y-1"></div>
+                </div>
+            </div>
+            <div id="sponsor-section" class="mb-3 hidden">
+                <div class="bg-[#1C1C1E] rounded-xl p-3 border border-gray-800">
+                    <div class="text-sm text-white font-bold mb-2">스폰서</div>
+                    <div id="sponsor-list" class="space-y-2"></div>
+                </div>
+            </div>
+            <div id="rookie-spotlight" class="mb-3 hidden">
+                <div class="bg-[#1C1C1E] rounded-xl p-3 border border-gray-800">
+                    <div class="text-sm text-white font-bold mb-2">루키 스포트라이트</div>
+                    <div id="rookie-spotlight-list" class="space-y-1"></div>
                 </div>
             </div>
             <div class="mb-2 flex items-center justify-between">
@@ -84,15 +124,35 @@
             <div id="journal-feed" class="mb-4 space-y-1"></div>
             <div class="mb-2 flex items-center justify-between">
                 <span class="text-sm text-gray-400">오늘의 추천</span>
+                <label class="flex items-center gap-1 text-[11px] text-gray-400">
+                    <input id="reco-include-secret-toggle" type="checkbox" class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
+                    객잔 포함
+                </label>
+                <label class="flex items-center gap-1 text-[11px] text-gray-400">
+                    <input id="reco-balance-toggle" type="checkbox" class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
+                    균형
+                </label>
             </div>
-            <div id="recommended-tabs" class="flex gap-2 mb-2">
+            <div id="recommended-tabs" class="flex gap-2 mb-2 overflow-x-auto no-scrollbar flex-nowrap -mx-2 px-2">
                 <button id="reco-tab-mix" onclick="setRecommendedMode('mix')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">종합</button>
                 <button id="reco-tab-follow" onclick="setRecommendedMode('follow')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">팔로우</button>
                 <button id="reco-tab-new" onclick="setRecommendedMode('new')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">신규</button>
                 <button id="reco-tab-similar" onclick="setRecommendedMode('similar')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">유사 키워드</button>
             </div>
             <div id="recommended-feed" class="mb-4 space-y-1"></div>
+            <div class="mb-2 flex items-center justify-between">
+                <span class="text-sm text-gray-400">강의 자료</span>
+                <div class="flex gap-2">
+                    <button onclick="navigate('materials-board')" class="text-xs text-yellow-400 hover:text-yellow-300">더보기</button>
+                    <button onclick="navigate('material-upload')" class="text-xs bg-yellow-600 text-black px-2 py-1.5 rounded hover:bg-yellow-500">올리기</button>
+                </div>
+            </div>
+            <div id="materials-preview" class="mb-4 space-y-1"></div>
             <div class="space-y-1" id="posts-list-public"></div>
+        </div>
+        <div id="materials-board" class="app-view hidden">
+            <h2 class="text-2xl font-bold text-white mb-2">강의 자료</h2>
+            <div id="materials-list" class="space-y-2 min-h-[200px]"></div>
         </div>
         <div id="news-view" class="app-view hidden">
             <h2 class="text-2xl font-bold text-white mb-2">증권 뉴스</h2>
@@ -101,6 +161,30 @@
                 <button onclick="refreshNewsView()" class="bg-gray-800 text-white px-3 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">새로고침</button>
             </div>
             <div id="news-list" class="space-y-2 min-h-[200px]"></div>
+        </div>
+        <div id="material-upload" class="app-view hidden">
+            <h2 class="text-2xl font-bold text-white mb-2">강의 자료 올리기</h2>
+            <div class="bg-[#1C1C1E] p-4 rounded-2xl border border-gray-800 space-y-3">
+                <div>
+                    <div class="text-xs text-gray-400 mb-1">제목</div>
+                    <input id="mat-title" type="text" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-sm">
+                </div>
+                <div>
+                    <div class="text-xs text-gray-400 mb-1">소개(미리보기)</div>
+                    <textarea id="mat-preview" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-sm min-h-[60px]"></textarea>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-400 mb-1">가격(원)</div>
+                    <input id="mat-price" type="number" min="0" step="100" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-sm">
+                </div>
+                <div>
+                    <div class="text-xs text-gray-400 mb-1">내용</div>
+                    <textarea id="mat-content" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-sm min-h-[160px]"></textarea>
+                </div>
+                <div class="flex justify-end">
+                    <button onclick="saveMaterial()" class="text-sm bg-yellow-600 text-black px-3 py-2 rounded-xl font-bold hover:bg-yellow-500 border border-yellow-700">등록</button>
+                </div>
+            </div>
         </div>
         <div id="stock-board" class="app-view hidden">
             <h2 class="text-2xl font-bold text-white mb-2">종목 비급</h2>
@@ -120,21 +204,21 @@
             </div>
             <div class="space-y-1" id="posts-list-secret"></div>
         </div>
-        <div id="journal-board" class="app-view hidden">
+            <div id="journal-board" class="app-view hidden">
             <h2 class="text-2xl font-bold text-white mb-2">매매 일지</h2>
-            <div class="flex items-center gap-2 mb-3">
-                <input id="journal-filter-keyword" type="text" class="flex-1 bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs" placeholder="키워드/태그/메모">
-                <input id="journal-filter-strategy" type="text" class="bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs" placeholder="전략">
-                <label class="flex items-center gap-1 text-xs bg-[#1C1C1E] border border-gray-800 rounded-xl px-2 py-1">
+            <div class="flex flex-wrap items-center gap-2 mb-3">
+                <input id="journal-filter-keyword" type="text" class="flex-1 min-w-0 bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs" placeholder="키워드/태그/메모">
+                <input id="journal-filter-strategy" type="text" class="bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs w-24 sm:w-28 flex-shrink-0" placeholder="전략">
+                <label class="flex items-center gap-1 text-xs bg-[#1C1C1E] border border-gray-800 rounded-xl px-2 py-1 flex-shrink-0">
                     <input id="journal-filter-positive" type="checkbox" class="accent-yellow-500">
                     <span class="text-gray-300">양수만</span>
                 </label>
-                <label class="flex items-center gap-1 text-xs bg-[#1C1C1E] border border-gray-800 rounded-xl px-2 py-1">
+                <label class="flex items-center gap-1 text-xs bg-[#1C1C1E] border border-gray-800 rounded-xl px-2 py-1 flex-shrink-0">
                     <input id="journal-filter-negative" type="checkbox" class="accent-yellow-500">
                     <span class="text-gray-300">음수만</span>
                 </label>
             </div>
-            <div class="space-y-1" id="journal-board-list"></div>
+            <div class="space-y-1 pb-2" id="journal-board-list"></div>
         </div>
         <div id="post-detail" class="app-view hidden">
             <div class="px-2 sm:px-3 md:px-4 max-w-none mx-auto">
@@ -233,11 +317,11 @@
             </div>
             
             <!-- Tabs -->
-            <div class="flex border-b border-gray-800 mb-4">
-                <button onclick="switchMyPageTab('posts')" id="tab-my-posts" class="flex-1 pb-2 text-sm font-medium text-yellow-500 border-b-2 border-yellow-500 transition">나의 비급</button>
-                 <button onclick="switchMyPageTab('activity')" id="tab-my-activity" class="flex-1 pb-2 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition">행적</button>
-                <button onclick="switchMyPageTab('bookmarks')" id="tab-my-bookmarks" class="flex-1 pb-2 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition">관심 비급</button>
-                <button onclick="switchMyPageTab('journal')" id="tab-my-journal" class="flex-1 pb-2 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition">매매 일지</button>
+            <div class="flex border-b border-gray-800 mb-4 overflow-x-auto no-scrollbar flex-nowrap -mx-2 px-2">
+                <button onclick="switchMyPageTab('posts')" id="tab-my-posts" class="flex-1 pb-2 text-xs sm:text-sm font-medium text-yellow-500 border-b-2 border-yellow-500 transition whitespace-nowrap">나의 비급</button>
+                 <button onclick="switchMyPageTab('activity')" id="tab-my-activity" class="flex-1 pb-2 text-xs sm:text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition whitespace-nowrap">행적</button>
+                <button onclick="switchMyPageTab('bookmarks')" id="tab-my-bookmarks" class="flex-1 pb-2 text-xs sm:text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition whitespace-nowrap">관심 비급</button>
+                <button onclick="switchMyPageTab('journal')" id="tab-my-journal" class="flex-1 pb-2 text-xs sm:text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition whitespace-nowrap">매매 일지</button>
                 <button onclick="switchMyPageTab('settings')" id="tab-my-settings" class="flex-1 pb-2 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition">면모 정비</button>
             </div>
             
@@ -326,11 +410,11 @@
              <div id="my-activity-area" class="hidden space-y-4 min-h-[200px]">
                  <div class="flex items-center justify-between">
                      <div class="text-xs text-gray-400">최근 행적</div>
-                     <div class="flex gap-2">
-                         <button onclick="switchActivityFilter('all')" id="act-filter-all" class="px-3 py-1 rounded-full text-xs bg-gray-800 text-gray-300 border border-gray-700">전체</button>
-                         <button onclick="switchActivityFilter('comment')" id="act-filter-comment" class="px-3 py-1 rounded-full text-xs bg-gray-800 text-gray-300 border border-gray-700">전서</button>
-                         <button onclick="switchActivityFilter('like')" id="act-filter-like" class="px-3 py-1 rounded-full text-xs bg-gray-800 text-gray-300 border border-gray-700">명성</button>
-                     </div>
+                    <div class="flex gap-2 overflow-x-auto no-scrollbar flex-nowrap -mx-2 px-2">
+                        <button onclick="switchActivityFilter('all')" id="act-filter-all" class="px-3 py-1 rounded-full text-xs sm:text-sm bg-gray-800 text-gray-300 border border-gray-700 whitespace-nowrap">전체</button>
+                        <button onclick="switchActivityFilter('comment')" id="act-filter-comment" class="px-3 py-1 rounded-full text-xs sm:text-sm bg-gray-800 text-gray-300 border border-gray-700 whitespace-nowrap">전서</button>
+                        <button onclick="switchActivityFilter('like')" id="act-filter-like" class="px-3 py-1 rounded-full text-xs sm:text-sm bg-gray-800 text-gray-300 border border-gray-700 whitespace-nowrap">명성</button>
+                    </div>
                  </div>
                      <div class="flex items-center gap-2">
                          <input id="activity-keyword" type="text" class="flex-1 bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs" placeholder="키워드로 찾기" oninput="setActivityKeyword(this.value)">
@@ -351,6 +435,13 @@
                         <button onclick="updateBanner()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">교체</button>
                         <button onclick="removeBanner()" class="bg-red-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-700 border border-red-900">제거</button>
                     </div>
+                </div>
+                <div>
+                    <h4 class="text-sm font-bold text-gray-400 mb-3">입금 확인 요청</h4>
+                    <div class="flex items-center gap-2 mb-2">
+                        <button onclick="loadMyDeposits()" class="text-xs px-2 py-1 bg-gray-800 text-gray-300 rounded">새로고침</button>
+                    </div>
+                    <div id="my-deposits-list" class="space-y-2 min-h-[80px]"></div>
                 </div>
                 <div>
                     <h4 class="text-sm font-bold text-gray-400 mb-3">용모 (프로필)</h4>
@@ -477,10 +568,10 @@
     
     <nav class="flex-none z-40 glass glass-border bg-[#1C1C1E] pb-safe">
         <div class="flex justify-around max-w-md mx-auto">
-            <button onclick="navigate('gangho-plaza')" class="nav-btn flex-1 py-3 text-sm font-medium active">광장</button>
-            <button onclick="navigate('stock-board')" class="nav-btn flex-1 py-3 text-sm font-medium">비급</button>
-            <button onclick="navigate('secret-inn')" class="nav-btn flex-1 py-3 text-sm font-medium">객잔</button>
-            <button onclick="navigate('my-page')" id="nav-my-page" class="hidden nav-btn flex-1 py-3 text-sm font-medium">본거지</button>
+            <button onclick="navigate('gangho-plaza')" class="nav-btn flex-1 py-3 text-xs sm:text-sm font-medium whitespace-nowrap" aria-selected="true">광장</button>
+            <button onclick="navigate('materials-board')" class="nav-btn flex-1 py-3 text-xs sm:text-sm font-medium whitespace-nowrap">배우기</button>
+            <button onclick="navigate('journal-board')" class="nav-btn flex-1 py-3 text-xs sm:text-sm font-medium whitespace-nowrap">매매 일지</button>
+            <button onclick="navigate('my-page')" id="nav-my-page" class="hidden nav-btn flex-1 py-3 text-xs sm:text-sm font-medium whitespace-nowrap">본거지</button>
         </div>
     </nav>
     
@@ -840,6 +931,7 @@
                 <button onclick="switchNotificationsFilter('comment')" id="noti-filter-comment" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">전서</button>
                 <button onclick="switchNotificationsFilter('like')" id="noti-filter-like" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">명성</button>
                 <button onclick="switchNotificationsFilter('message')" id="noti-filter-message" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">밀서</button>
+                <button onclick="switchNotificationsFilter('purchase')" id="noti-filter-purchase" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">구매</button>
             </div>
             <div id="notification-list" class="flex-grow overflow-y-auto p-2 space-y-2">
                 <!-- Notifications injected here -->
@@ -862,6 +954,7 @@
                 <button id="admin-tab-reports" onclick="switchAdminTab('reports')" class="px-3 py-1.5 text-xs bg-gray-800 text-gray-300 rounded-full border border-gray-700">신고</button>
                 <button id="admin-tab-users" onclick="switchAdminTab('users')" class="px-3 py-1.5 text-xs bg-gray-800 text-gray-300 rounded-full border border-gray-700">문도</button>
                 <button id="admin-tab-broadcast" onclick="switchAdminTab('broadcast')" class="px-3 py-1.5 text-xs bg-gray-800 text-gray-300 rounded-full border border-gray-700">공지</button>
+                <button id="admin-tab-deposits" onclick="switchAdminTab('deposits')" class="px-3 py-1.5 text-xs bg-gray-800 text-gray-300 rounded-full border border-gray-700">입금</button>
             </div>
             <div class="flex-grow overflow-y-auto p-3 space-y-2">
                 <div id="admin-reports-area" class="space-y-2">
@@ -887,6 +980,22 @@
                     <textarea id="broadcast-content" class="w-full bg-black border border-gray-700 text-white text-sm rounded p-2 h-24" placeholder="전 강호에 알릴 관방 공지를 적으시오"></textarea>
                     <button onclick="sendBroadcast()" class="w-full py-2 text-sm bg-yellow-600 text-black rounded-xl font-bold hover:bg-yellow-500">공지 발송</button>
                     <div class="text-[11px] text-gray-500">공지 발송은 모든 문도에게 전갈로 전해지오.</div>
+                </div>
+                <div id="admin-deposits-area" class="hidden space-y-2">
+                    <div class="flex items-center gap-2 mb-2">
+                        <select id="deposits-filter" class="bg-black border border-gray-700 text-white text-xs rounded px-2 py-1">
+                            <option value="requested">요청</option>
+                            <option value="pending">대기</option>
+                            <option value="confirmed">확인됨</option>
+                            <option value="cancelled">취소</option>
+                            <option value="all">전체</option>
+                        </select>
+                        <input id="deposits-search" type="text" placeholder="입금자/자료명" class="flex-1 bg-black border border-gray-700 text-white text-xs rounded px-2 py-1" oninput="loadAdminDeposits()">
+                        <button onclick="loadAdminDeposits()" class="text-xs px-2 py-1 bg-gray-800 text-gray-300 rounded">새로고침</button>
+                        <button onclick="confirmSelectedDeposits()" class="text-xs px-2 py-1 bg-green-700 text-white rounded">선택 확인</button>
+                        <button onclick="cancelSelectedDeposits()" class="text-xs px-2 py-1 bg-gray-700 text-white rounded">선택 취소</button>
+                    </div>
+                    <div id="admin-deposits-list" class="space-y-2"></div>
                 </div>
             </div>
         </div>

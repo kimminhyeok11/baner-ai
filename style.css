@@ -206,6 +206,7 @@ blockquote {
 .nav-btn {
     color: var(--text-secondary);
     border-bottom: 2px solid transparent;
+    white-space: nowrap;
 }
 .nav-btn[aria-selected="true"] {
     color: var(--accent-color);
@@ -239,6 +240,17 @@ blockquote {
 /* Safe Area Utility */
 .pb-safe {
     padding-bottom: env(safe-area-inset-bottom, 20px);
+}
+.pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+}
+
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
 }
 
 /* My Page Profile Card Readability */

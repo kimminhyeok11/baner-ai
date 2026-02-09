@@ -584,6 +584,8 @@ create index if not exists idx_messages_sender_created on public.messages(sender
 
 create extension if not exists pg_trgm;
 create index if not exists idx_posts_title_trgm on public.posts using gin (title gin_trgm_ops);
+create index if not exists idx_posts_content_trgm on public.posts using gin (content gin_trgm_ops);
+create index if not exists idx_posts_like_created on public.posts(like_count, created_at);
 create index if not exists idx_notifications_user_isread on public.notifications(user_id, is_read);
 create index if not exists idx_messages_receiver_isread on public.messages(receiver_id, is_read);
 create index if not exists idx_user_relationships_user_type on public.user_relationships(user_id, type);
@@ -678,6 +680,158 @@ create index if not exists idx_post_clicks_post_created on public.post_clicks(po
 
 create index if not exists idx_posts_user_created on public.posts(user_id, created_at);
 create index if not exists idx_posts_content_trgm on public.posts using gin (content gin_trgm_ops);
+
+create table if not exists public.sponsor_slots (
+  id uuid default gen_random_uuid() primary key,
+  title text not null,
+  label text,
+  link_url text not null,
+  image_url text,
+  priority integer default 0,
+  active boolean default true,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+alter table public.sponsor_slots enable row level security;
+drop policy if exists "Sponsors public view" on public.sponsor_slots;
+create policy "Sponsors public view"
+  on public.sponsor_slots for select
+  using ( active = true );
+create index if not exists idx_sponsors_active_priority on public.sponsor_slots(active, priority desc, created_at desc);
+
+create table if not exists public.materials (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  title text not null,
+  preview text,
+  price integer not null default 0,
+  is_active boolean default true,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+alter table public.materials enable row level security;
+drop policy if exists "Materials list view" on public.materials;
+create policy "Materials list view"
+  on public.materials for select
+  using ( is_active = true );
+drop policy if exists "Materials insert by owner" on public.materials;
+create policy "Materials insert by owner"
+  on public.materials for insert
+  with check ( auth.uid() = user_id );
+drop policy if exists "Materials update by owner" on public.materials;
+create policy "Materials update by owner"
+  on public.materials for update
+  using ( auth.uid() = user_id );
+drop policy if exists "Materials delete by owner" on public.materials;
+create policy "Materials delete by owner"
+  on public.materials for delete
+  using ( auth.uid() = user_id );
+create index if not exists idx_materials_active_created on public.materials(is_active, created_at);
+
+create table if not exists public.material_contents (
+  material_id uuid references public.materials(id) on delete cascade primary key,
+  content text not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+alter table public.material_contents enable row level security;
+drop policy if exists "Material contents owner view" on public.material_contents;
+create policy "Material contents owner view"
+  on public.material_contents for select
+  using ( exists (select 1 from public.materials m where m.id = material_id and m.user_id = auth.uid()) );
+drop policy if exists "Material contents buyers view" on public.material_contents;
+create policy "Material contents buyers view"
+  on public.material_contents for select
+  using ( exists (select 1 from public.material_purchases p where p.material_id = material_id and p.user_id = auth.uid() and p.status = 'paid') );
+drop policy if exists "Material contents insert by owner" on public.material_contents;
+create policy "Material contents insert by owner"
+  on public.material_contents for insert
+  with check ( exists (select 1 from public.materials m where m.id = material_id and m.user_id = auth.uid()) );
+drop policy if exists "Material contents update by owner" on public.material_contents;
+create policy "Material contents update by owner"
+  on public.material_contents for update
+  using ( exists (select 1 from public.materials m where m.id = material_id and m.user_id = auth.uid()) );
+
+create table if not exists public.material_purchases (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  material_id uuid references public.materials(id) on delete cascade not null,
+  status text not null default 'paid',
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+alter table public.material_purchases enable row level security;
+drop policy if exists "Material purchases insert by owner" on public.material_purchases;
+create policy "Material purchases insert by owner"
+  on public.material_purchases for insert
+  with check ( auth.uid() = user_id );
+drop policy if exists "Material purchases view by owner" on public.material_purchases;
+create policy "Material purchases view by owner"
+  on public.material_purchases for select
+  using ( auth.uid() = user_id );
+create unique index if not exists uniq_material_purchase on public.material_purchases(user_id, material_id);
+
+create table if not exists public.deposit_requests (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  material_id uuid references public.materials(id) on delete cascade not null,
+  depositor_name text not null,
+  amount integer not null,
+  memo text,
+  status text not null default 'requested',
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  confirmed_at timestamp with time zone,
+  confirmed_by uuid references public.profiles(id)
+);
+alter table public.deposit_requests enable row level security;
+drop policy if exists "Deposit requests view by owner" on public.deposit_requests;
+create policy "Deposit requests view by owner"
+  on public.deposit_requests for select
+  using ( auth.uid() = user_id );
+drop policy if exists "Deposit requests insert by owner" on public.deposit_requests;
+create policy "Deposit requests insert by owner"
+  on public.deposit_requests for insert
+  with check ( auth.uid() = user_id );
+drop policy if exists "Deposit requests admin view" on public.deposit_requests;
+create policy "Deposit requests admin view"
+  on public.deposit_requests for select
+  using ( auth.uid() in (select id from public.profiles where role = 'admin') );
+drop policy if exists "Deposit requests admin update" on public.deposit_requests;
+create policy "Deposit requests admin update"
+  on public.deposit_requests for update
+  using ( auth.uid() in (select id from public.profiles where role = 'admin') );
+create index if not exists idx_deposit_status_created on public.deposit_requests(status, created_at);
+create index if not exists idx_deposit_user_created on public.deposit_requests(user_id, created_at);
+create index if not exists idx_deposit_material on public.deposit_requests(material_id);
+
+create or replace function public.handle_deposit_confirm()
+returns trigger as $$
+begin
+  if TG_OP = 'UPDATE' and new.status = 'confirmed' and (old.status is distinct from 'confirmed') then
+    if not exists (
+      select 1 from public.material_purchases mp
+      where mp.user_id = new.user_id and mp.material_id = new.material_id
+    ) then
+      insert into public.material_purchases (user_id, material_id, status)
+      values (new.user_id, new.material_id, 'paid');
+    end if;
+    if new.confirmed_at is null then
+      new.confirmed_at = timezone('utc'::text, now());
+    end if;
+    insert into public.notifications (user_id, type, content, link)
+    values (new.user_id, 'purchase', '입금 확인되었습니다. 강의 자료 열람이 가능합니다.', 'material:' || new.material_id);
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_deposit_confirm on public.deposit_requests;
+create trigger on_deposit_confirm
+  before update on public.deposit_requests
+  for each row execute procedure public.handle_deposit_confirm();
+
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'deposit_requests') then
+    alter publication supabase_realtime add table public.deposit_requests;
+  end if;
+end $$;
 
 create or replace function public.get_recommended_posts(p_user uuid, p_limit int default 10)
 returns table (
