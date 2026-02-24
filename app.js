@@ -68,7 +68,31 @@ async function computeRecentCommentMeta(postIds, hours = 72) {
         return map;
     } catch {
         return {};
-    }
+    /*
+    // Mobile Drawer Setup
+    const drawer = document.getElementById('mobile-drawer');
+    const drawerOverlay = document.getElementById('mobile-drawer-overlay');
+    const drawerContent = document.getElementById('mobile-drawer-content');
+    
+    window.openMobileDrawer = function() {
+        if (!drawer) return;
+        drawer.classList.remove('hidden');
+        setTimeout(() => {
+            drawerOverlay.classList.remove('opacity-0');
+            drawerContent.classList.remove('-translate-x-full');
+        }, 10);
+    };
+    
+    window.closeMobileDrawer = function() {
+        if (!drawer) return;
+        drawerOverlay.classList.add('opacity-0');
+        drawerContent.classList.add('-translate-x-full');
+        setTimeout(() => {
+            drawer.classList.add('hidden');
+        }, 300);
+    };
+}
+*/
 }
 
 try {
@@ -467,102 +491,59 @@ window.refreshNewsView = function() { loadNewsView(); };
 async function loadMiniTrends() {
     const boxKospi = document.getElementById('mini-kospi');
     const boxKosdaq = document.getElementById('mini-kosdaq');
-    const headKospi = document.getElementById('mini-kospi-head');
-    const headKosdaq = document.getElementById('mini-kosdaq-head');
-    const infoKospi = document.getElementById('mini-kospi-info');
-    const infoKosdaq = document.getElementById('mini-kosdaq-info');
     if (!boxKospi || !boxKosdaq) return;
-    const render = (inv, info, idxId) => {
-        const f = (n)=> (typeof n === 'number' && isFinite(n)) ? n.toLocaleString('ko-KR') : '-';
-        const c = (n)=> (typeof n === 'number' && n > 0 ? 'text-red-400' : 'text-blue-400');
-        const chartHtml = idxId === 'kospi' ? '' : `
-            <div class="w-full h-24 bg-gray-800 rounded overflow-hidden relative">
-                <canvas id="mini-${idxId}-chart" class="w-full h-24"></canvas>
-            </div>
-            <div id="mini-${idxId}-dates" class="flex justify-between text-[10px] text-gray-400 mt-1 px-1"></div>`;
-        return `
-            <div class="grid grid-cols-3 gap-2">
-                <div class="text-center"><div class="text-[10px] label-muted">개인</div><div class="${c(inv.individual)} whitespace-nowrap num-strong">${f(inv.individual)}</div></div>
-                <div class="text-center"><div class="text-[10px] label-muted">외국인</div><div class="${c(inv.foreign)} whitespace-nowrap num-strong">${f(inv.foreign)}</div></div>
-                <div class="text-center"><div class="text-[10px] label-muted">기관</div><div class="${c(inv.institution)} whitespace-nowrap num-strong">${f(inv.institution)}</div></div>
-            </div>
-            <div class="mt-2">
-                ${chartHtml}
-            </div>
-        `;
+
+    const renderSimple = (el, info) => {
+        const isUp = (info.change_percent || '').includes('+');
+        const colorClass = isUp ? 'text-red-500' : 'text-blue-500';
+        el.innerHTML = `<span class="text-white font-bold mr-2">${info.point}</span><span class="${colorClass} text-xs">${info.change_percent}</span>`;
     };
-    const fetchOne = async (index) => {
-        const url = `${SUPABASE_URL}/functions/v1/trends?index=${encodeURIComponent(index)}`;
-        const headers = { Authorization: `Bearer ${SUPABASE_ANON_KEY}` };
-        const res = await fetch(url, { mode: 'cors', headers });
-        if (!res.ok) throw new Error('network');
-        const j = await res.json();
-        return { inv: j.investors || {}, info: { point: j.point, change_percent: j.change_percent, open: j.open, high: j.high, low: j.low, chartUrl: j.chartUrl }, series: Array.isArray(j.series) ? j.series : [] };
-    };
-    const fetchOhlcViaProxy = async (index) => {
-        const url = `https://r.jina.ai/http://finance.naver.com/sise/sise_index.naver?code=${index}`;
-        const res = await fetch(url, { mode: 'cors' });
-        if (!res.ok) throw new Error('proxy');
-        const text = await res.text();
-        const compact = text.replace(/\s+/g, '');
-        const packed = compact.match(/시([\d,\.]+)고([\d,\.]+)저([\d,\.]+)종([\d,\.]+)/);
-        if (packed) {
-            return { open: packed[1], high: packed[2], low: packed[3], close: packed[4] };
-        }
-        const pickAny = (labels) => {
-            let last = null;
-            for (const label of labels) {
-                const m = text.match(new RegExp(`${label}\\s*([\\d,\\.]+)`));
-                if (m) {
-                    last = m[1];
-                    break;
-                }
+
+    const fetchSimple = async (index) => {
+        try {
+            // Try proxy first for speed
+            const url = `https://r.jina.ai/http://finance.naver.com/sise/sise_index.naver?code=${index}`;
+            const res = await fetch(url, { mode: 'cors' });
+            if (!res.ok) throw new Error('proxy');
+            const text = await res.text();
+            
+            // Fast regex extraction
+            const compact = text.replace(/\s+/g, '');
+            const match = compact.match(/현재가([\d,]+(?:\.\d+)?)전일대비([▼▲])([\d,]+(?:\.\d+)?)등락률([+\-]?[\d\.]+)%/);
+            
+            if (match) {
+                const point = match[1];
+                const sign = match[2] === '▲' ? '+' : '-';
+                const change = match[3];
+                const pct = match[4];
+                return { point, change_percent: `${sign}${pct}%` };
             }
-            return last;
-        };
-        const open = pickAny(['시가', '시']);
-        const high = pickAny(['고가', '고']);
-        const low = pickAny(['저가', '저']);
-        const close = pickAny(['종가', '종']);
-        return { open, high, low, close };
-    };
-    const fetchDailyCandlesViaProxy = async (index) => {
-        const url = `https://r.jina.ai/http://finance.naver.com/sise/sise_index_day.naver?code=${index}`;
-        const res = await fetch(url, { mode: 'cors' });
-        if (!res.ok) throw new Error('proxy');
-        const text = await res.text();
-        const rows = [];
-        const re = /(\d{4}\.\d{2}\.\d{2})\s+([\d,]+(?:\.\d+)?)/g;
-        let m;
-        while ((m = re.exec(text)) !== null) {
-            const dateStr = m[1];
-            const closeStr = m[2];
-            const close = parseFloat(String(closeStr).replace(/,/g, ''));
-            if (!Number.isNaN(close)) rows.push({ dateStr, close });
+            
+            // Fallback to simpler regex if structure changed
+            const pointMatch = text.match(/현재가\s*([\d,]+\.\d+)/);
+            if(pointMatch) {
+                return { point: pointMatch[1], change_percent: '' }; // Minimal
+            }
+            throw new Error('parse error');
+        } catch (e) {
+            // Final fallback to Supabase Edge Function if proxy fails
+            const url = `${SUPABASE_URL}/functions/v1/trends?index=${encodeURIComponent(index)}`;
+            const headers = { Authorization: `Bearer ${SUPABASE_ANON_KEY}` };
+            const res = await fetch(url, { mode: 'cors', headers });
+            const j = await res.json();
+            return { point: j.point, change_percent: j.change_percent };
         }
-        if (!rows.length) return [];
-        const parsed = rows.map(r => {
-            const [y, mo, d] = r.dateStr.split('.').map(n => parseInt(n, 10));
-            const dt = new Date(y, (mo || 1) - 1, d || 1);
-            return { t: Math.floor(dt.getTime() / 1000), close: r.close };
-        }).filter(r => r.t);
-        const ordered = parsed.slice().sort((a, b) => a.t - b.t).slice(-12);
-        const candles = [];
-        for (let i = 0; i < ordered.length; i++) {
-            const prevClose = i > 0 ? ordered[i - 1].close : ordered[i].close;
-            const close = ordered[i].close;
-            const open = prevClose;
-            const hiBase = Math.max(open, close);
-            const loBase = Math.min(open, close);
-            const range = Math.max(0.5, hiBase * 0.002);
-            const high = hiBase + range;
-            const low = loBase - range;
-            candles.push({ t: ordered[i].t, o: open, h: high, l: low, c: close });
-        }
-        return candles;
     };
-    const fillOhlc = async (r, index) => {
-        if (r.info.open && r.info.high && r.info.low && r.info.point) return;
+
+    try {
+        const [k, q] = await Promise.all([fetchSimple('KOSPI'), fetchSimple('KOSDAQ')]);
+        renderSimple(boxKospi, k);
+        renderSimple(boxKosdaq, q);
+    } catch {
+        boxKospi.innerText = '-';
+        boxKosdaq.innerText = '-';
+    }
+}
         try {
             const ohlc = await fetchOhlcViaProxy(index);
             if (!r.info.open && ohlc.open) r.info.open = ohlc.open;
@@ -2481,16 +2462,14 @@ window.switchMyPageTab = function(tab) {
         const btn = document.getElementById(`tab-my-${t}`);
         const area = document.getElementById(`my-${t}-area`);
         
+        if (!btn) return;
+        
         if (t === tab) {
-            btn.classList.replace('text-gray-500', 'text-yellow-500');
-            btn.classList.replace('border-transparent', 'border-yellow-500');
-            btn.classList.remove('hover:text-gray-300');
-            area.classList.remove('hidden');
+            btn.className = 'pb-3 text-sm font-bold text-white border-b-2 border-white whitespace-nowrap transition-colors';
+            if(area) area.classList.remove('hidden');
         } else {
-            btn.classList.replace('text-yellow-500', 'text-gray-500');
-            btn.classList.replace('border-yellow-500', 'border-transparent');
-            btn.classList.add('hover:text-gray-300');
-            area.classList.add('hidden');
+            btn.className = 'pb-3 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 whitespace-nowrap transition-colors';
+            if(area) area.classList.add('hidden');
         }
     });
 
@@ -2938,15 +2917,18 @@ function renderStockTabs() {
     tagsToRender.forEach(tag => {
         const btn = document.createElement('button');
         const isActive = state.currentStockName === tag;
-        btn.className = `px-3 py-1 rounded-full text-xs whitespace-nowrap transition border ${
-            isActive ? 'bg-green-800 text-white border-green-600 font-bold shadow-md' : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700'
+        btn.className = `px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all transform ${
+            isActive 
+                ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 scale-105' 
+                : 'bg-[#2C2C2E] text-gray-400 hover:bg-[#3A3A3C] hover:text-white'
         }`;
         btn.innerText = tag;
         btn.onclick = () => {
             state.currentStockName = tag;
             renderStockTabs();
             renderPosts('posts-list-stock', 'stock', tag);
-            document.getElementById('current-stock-name').innerText = tag;
+            const titleEl = document.getElementById('current-stock-name');
+            if(titleEl) titleEl.innerText = tag;
         };
         stockTabs.appendChild(btn);
     });
@@ -3013,61 +2995,67 @@ async function fetchPosts(type, stockName = null, isLoadMore = false) {
 
 function createPostElement(post) {
     const author = post.profiles?.nickname || post.guest_nickname || '익명 무협객';
-    const level = post.profiles ? calculateLevel(post.profiles.post_count, post.profiles.comment_count) : { name: '입문자', color: 'text-gray-500' };
-    const mugong = MU_GONG_TYPES.find(m => m.id === post.mugong_id);
     const isSecret = post.type === 'secret';
-    const avatar = post.profiles?.avatar_url || '';
-
+    
     const postEl = document.createElement('div');
-    postEl.className = 'card cursor-pointer';
+    postEl.className = 'group relative p-4 rounded-2xl bg-[#1C1C1E] border border-gray-800 hover:border-gray-700 transition-all hover:shadow-lg cursor-pointer mb-3';
     postEl.dataset.postId = post.id;
     postEl.onclick = () => openPostDetail(post);
     observePostCard(postEl, post.id);
 
-    const badge = post.type === 'stock' && getGuildMembership(post.stock_id) ? '<span class="ml-2 px-2 py-0.5 rounded-full text-[10px] bg-yellow-900/40 text-yellow-400 border border-yellow-700/40">문파</span>' : '';
-    const secretBadge = isSecret ? '<span class="ml-2 px-2 py-0.5 rounded-full text-[10px] bg-gray-800 text-gray-300 border border-gray-700">객잔</span>' : '';
-    postEl.innerHTML = `
-        <div class="flex justify-between items-start mb-2">
-            <h4 class="text-white font-semibold truncate text-base flex-1">${post.title}${badge}${secretBadge}</h4>
-            ${!isSecret ? `<span class="text-[10px] text-gray-500 ml-2 bg-gray-800 px-1.5 py-0.5 rounded flex items-center gap-2">
-                <span class="inline-flex items-center gap-[2px]"><span>👁</span><span>${post.view_count || 0}</span></span>
-                <span class="inline-flex items-center gap-[2px]"><span>❤️</span><span>${post.like_count || 0}</span></span>
-            </span>` : ''}
+    const timeAgo = (dateStr) => {
+        const d = new Date(dateStr);
+        const now = new Date();
+        const diff = (now - d) / 1000;
+        if(diff < 60) return '방금 전';
+        if(diff < 3600) return `${Math.floor(diff/60)}분 전`;
+        if(diff < 86400) return `${Math.floor(diff/3600)}시간 전`;
+        return `${d.getMonth()+1}/${d.getDate()}`;
+    };
+
+    // Card Header
+    let headerHtml = `<div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-2">
+            ${isSecret ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-900/30 text-purple-400 border border-purple-800/50">객잔</span>' : ''}
+            ${post.type === 'stock' ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-400 border border-blue-800/50">${post.stock_id || '종목'}</span>` : ''}
+            <span class="text-xs text-gray-500">${author}</span>
+            <span class="text-xs text-gray-600">•</span>
+            <span class="text-xs text-gray-500">${timeAgo(post.created_at)}</span>
         </div>
-        <div class="text-[11px] text-gray-300 mb-1 truncate">${getExcerpt(post.content || '', 90)}</div>
-        <div class="text-xs text-gray-400 flex justify-between items-center">
-            <div class="flex items-center space-x-2">
-                <img src="${avatar || ''}" alt="" class="w-5 h-5 rounded-full border border-gray-700 ${avatar ? '' : 'hidden'}">
-                <span class="${level.color} font-medium">${level.name}</span>
-                <button class="text-yellow-400 hover:underline" ${post.user_id ? '' : 'disabled'}>${author}</button>
-                ${mugong ? `<span class="px-2 py-0.5 rounded-full text-[10px] bg-gray-700 ${mugong.color}">${mugong.tag}</span>` : ''}
+    </div>`;
+
+    // Content Preview
+    const rawContent = post.content || '';
+    const textPreview = rawContent.replace(/<[^>]*>/g, '').substring(0, 120) + (rawContent.length > 120 ? '...' : '');
+    const imgMatch = rawContent.match(/<img[^>]+src="([^">]+)"/);
+    const thumb = imgMatch ? imgMatch[1] : null;
+
+    postEl.innerHTML = `
+        ${headerHtml}
+        <div class="flex gap-4">
+            <div class="flex-1 min-w-0">
+                <h3 class="text-base font-bold text-white mb-1 truncate group-hover:text-yellow-500 transition-colors">${post.title}</h3>
+                <p class="text-sm text-gray-400 line-clamp-2 leading-relaxed">${textPreview}</p>
             </div>
-            <span class="text-gray-500">${new Date(post.created_at).toLocaleDateString()}</span>
+            ${thumb ? `<div class="w-20 h-20 rounded-xl bg-gray-800 flex-shrink-0 overflow-hidden"><img src="${thumb}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"></div>` : ''}
+        </div>
+        <div class="flex items-center gap-4 mt-3 pt-3 border-t border-gray-800/50">
+            <div class="flex items-center gap-1 text-gray-500 text-xs">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                <span>${post.view_count || 0}</span>
+            </div>
+            <div class="flex items-center gap-1 text-gray-500 text-xs">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+                <span>${post.like_count || 0}</span>
+            </div>
+             <div class="flex items-center gap-1 text-gray-500 text-xs">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                <span>${post.comment_count || 0}</span>
+            </div>
         </div>
     `;
-    if (state.user) {
-        const menuWrap = document.createElement('div');
-        menuWrap.className = 'mt-1';
-        const menuBtn = document.createElement('button');
-        menuBtn.className = 'text-[11px] bg-gray-800 text-gray-300 px-2 py-1 rounded border border-gray-700';
-        menuBtn.textContent = '⋯';
-        const menu = document.createElement('div');
-        menu.className = 'hidden mt-1 flex items-center gap-2';
-        const btnHide = document.createElement('button');
-        btnHide.className = 'text-[11px] bg-gray-800 text-gray-300 px-2 py-1 rounded border border-gray-700';
-        btnHide.textContent = '관심없음';
-        btnHide.onclick = (e) => { e.stopPropagation(); menu.classList.add('hidden'); markNotInterested(post.id); };
-        const btnMute = document.createElement('button');
-        btnMute.className = 'text-[11px] bg-gray-800 text-gray-300 px-2 py-1 rounded border border-gray-700';
-        btnMute.textContent = '작성자 숨김';
-        btnMute.onclick = (e) => { e.stopPropagation(); menu.classList.add('hidden'); if (post.user_id) muteAuthor(post.user_id); };
-        menuBtn.onclick = (e) => { e.stopPropagation(); menu.classList.toggle('hidden'); };
-        menu.appendChild(btnHide);
-        menu.appendChild(btnMute);
-        menuWrap.appendChild(menuBtn);
-        menuWrap.appendChild(menu);
-        postEl.appendChild(menuWrap);
-    }
+    return postEl;
+}
     const authorBtn = postEl.querySelector('button.text-yellow-400');
     if (authorBtn && post.user_id) {
         authorBtn.onclick = (e) => { e.stopPropagation(); openUserSheet(post.user_id, author, avatar); };
