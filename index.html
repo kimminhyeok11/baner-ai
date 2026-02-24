@@ -2,9 +2,9 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>천금문 (千金門)</title>
-    <meta name="description" content="천금문 — 한국 무림 세계관으로 즐기는 투자 커뮤니티. 종목 비급, 실시간 채팅, 예측 챌린지 등을 통해 강호의 협객들과 교류하세요.">
+    <meta name="description" content="한국 무림 세계관으로 즐기는 투자 커뮤니티. 종목 비급, 실시간 채팅, 예측 챌린지 등을 통해 강호의 협객들과 교류하세요.">
     <link rel="canonical" href="https://baner-ai.vercel.app/">
     <meta name="theme-color" content="#000000">
     <meta property="og:type" content="website">
@@ -28,576 +28,377 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        /* Mobile Safe Area Fixes */
+        .pb-safe-nav { padding-bottom: calc(3.5rem + env(safe-area-inset-bottom)); }
+        .pt-safe-top { padding-top: env(safe-area-inset-top); }
+        
+        /* Hide Scrollbar but keep functionality */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
 </head>
-<body class="h-screen flex flex-col overflow-hidden bg-black text-white">
+<body class="h-screen flex flex-col overflow-hidden bg-black text-white selection:bg-yellow-500/30">
     <div id="toast-container" class="fixed bottom-20 left-1/2 transform -translate-x-1/2 z-[100] flex flex-col gap-2 w-max max-w-[90vw]"></div>
 
-    <!-- Header -->
-    <header class="flex-none z-40 glass glass-border sticky top-0 pt-safe">
-        <div class="w-full px-3 sm:px-4 h-14 flex items-center justify-between">
-            <h1 id="brand-title" class="whitespace-nowrap text-xl sm:text-2xl font-black tracking-tighter cursor-pointer select-none transition-all duration-300 hover:scale-105 brand-title" 
-                onclick="navigate('gangho-plaza')">
+    <!-- Mobile Header -->
+    <header class="flex-none z-50 bg-black/90 backdrop-blur-md border-b border-gray-800 sticky top-0 md:hidden pt-safe-top">
+        <div class="w-full px-4 h-14 flex items-center justify-between">
+            <h1 class="text-xl font-black tracking-tighter cursor-pointer text-yellow-500" onclick="navigate('gangho-plaza')">
                 千金門
             </h1>
-            <div class="flex items-center gap-2">
-                <button onclick="openNotificationModal()" class="relative p-2 text-gray-400 hover:text-white transition">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-                    <span id="noti-badge" class="hidden absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-black"></span>
+            <div class="flex items-center gap-3">
+                 <button onclick="openNotificationModal()" class="relative text-gray-400 hover:text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                    <span id="noti-badge" class="hidden absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-black"></span>
                 </button>
-                <button onclick="openMessageModal()" class="relative p-2 text-gray-400 hover:text-white transition">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-                    <span id="msg-badge" class="hidden absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-black"></span>
-                </button>
-                <button id="admin-btn" onclick="openAdminModal()" class="hidden text-xs bg-gray-800 text-yellow-400 px-2 py-1.5 rounded hover:bg-gray-700">관아</button>
-                <button onclick="toggleHeaderMenu()" class="md:hidden p-2 text-gray-400 hover:text-white transition" aria-label="모바일 메뉴">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-                </button>
-                <div id="auth-buttons"></div>
-            </div>
-            <div id="header-menu" class="hidden absolute right-2 top-14 bg-[#1C1C1E] border border-gray-800 rounded-xl shadow-lg p-2 w-44 space-y-2 md:hidden">
-                <div class="space-y-1">
-                    <div class="text-[10px] text-gray-500 px-1">빠른 동작</div>
-                    <button onclick="tryOpenWriteModal('public'); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">글쓰기(공개)</button>
-                    <button onclick="tryOpenWriteModal('secret'); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">글쓰기(객잔)</button>
-                    <button onclick="navigate('material-upload'); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">자료 올리기</button>
-                </div>
-                <div class="space-y-1 pt-1 border-t border-gray-800">
-                    <div class="text-[10px] text-gray-500 px-1">바로가기</div>
-                    <button onclick="navigate('gangho-plaza'); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">광장</button>
-                    <button onclick="navigate('news-view'); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">뉴스</button>
-                    <button onclick="navigate('materials-board'); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">자료</button>
-                    <button onclick="navigate('journal-board'); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">일지</button>
-                    <button onclick="navigate('secret-inn'); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">객잔</button>
-                </div>
-                <div class="space-y-1 pt-1 border-t border-gray-800">
-                    <div class="text-[10px] text-gray-500 px-1">접근성</div>
-                    <button onclick="toggleLargeText(); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">큰 글씨</button>
-                    <button onclick="toggleHighContrast(); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">고대비</button>
-                    <button onclick="toggleReadingMode(); toggleHeaderMenu(false)" class="w-full text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded border border-gray-700 text-left">읽기</button>
+                <div id="auth-buttons-mobile"></div>
             </div>
         </div>
     </header>
 
-    <main class="flex-grow overflow-y-auto w-full max-w-md mx-auto p-4 scroll-hidden">
-        <div id="gangho-plaza" class="app-view">
-            <h2 class="text-2xl font-bold text-white mb-6">강호 광장</h2>
-            <div id="mini-trends" class="mb-3">
-                <div class="bg-[#1C1C1E] p-2 rounded-xl border border-gray-800">
-                    <div>
-                        <div id="mini-kospi-head" class="text-[11px] text-gray-400 mb-1">KOSPI</div>
-                        <div id="mini-kospi" class="text-[11px] text-gray-300">-</div>
-                    </div>
-                    <div class="mt-2 pt-2 border-t border-gray-800">
-                        <div id="mini-kosdaq-head" class="text-[11px] text-gray-400 mb-1">KOSDAQ</div>
-                        <div id="mini-kosdaq" class="text-[11px] text-gray-300">-</div>
-                    </div>
-                </div>
+    <!-- App Shell: Desktop Sidebar + Main Content -->
+    <div class="flex flex-1 overflow-hidden relative">
+        <!-- Desktop Sidebar -->
+        <aside class="hidden md:flex flex-col w-64 border-r border-gray-800 bg-[#1C1C1E] p-4 gap-4 z-40">
+            <div class="px-2 mb-4 pt-2">
+                 <h1 class="text-2xl font-black tracking-tighter cursor-pointer text-yellow-500 flex items-center gap-2" onclick="navigate('gangho-plaza')">
+                    <span>千金門</span>
+                    <span class="text-[10px] font-bold text-black bg-yellow-500 rounded px-1.5 py-0.5">BETA</span>
+                </h1>
             </div>
-            <div id="mini-trends-updated" class="text-[10px] text-gray-500 mb-4">갱신: -</div>
-            <div id="weekly-digest" class="mb-3 hidden">
-                <div class="bg-[#1C1C1E] rounded-xl p-3 border border-gray-800">
-                    <div class="text-sm text-white font-bold mb-2">주간 하이라이트</div>
-                    <div id="weekly-digest-list" class="space-y-1"></div>
-                </div>
-            </div>
-            <div id="sponsor-section" class="mb-3 hidden">
-                <div class="bg-[#1C1C1E] rounded-xl p-3 border border-gray-800">
-                    <div class="text-sm text-white font-bold mb-2">스폰서</div>
-                    <div id="sponsor-list" class="space-y-2"></div>
-                </div>
-            </div>
-            <div id="rookie-spotlight" class="mb-3 hidden">
-                <div class="bg-[#1C1C1E] rounded-xl p-3 border border-gray-800">
-                    <div class="text-sm text-white font-bold mb-2">루키 스포트라이트</div>
-                    <div id="rookie-spotlight-list" class="space-y-1"></div>
-                </div>
-            </div>
-            <div class="mb-2 flex items-center justify-between">
-                <span class="text-sm text-gray-400">증권 뉴스</span>
-                <button onclick="navigate('news-view')" class="text-xs text-yellow-400 hover:text-yellow-300">더보기</button>
-            </div>
-            <div id="news-feed" class="mb-4 space-y-1"></div>
-            <div class="mb-2 flex items-center justify-between">
-                <span class="text-sm text-gray-400">매매 일지</span>
-                <button onclick="navigate('journal-board')" class="text-xs text-yellow-400 hover:text-yellow-300">더보기</button>
-            </div>
-            <div id="journal-feed" class="mb-4 space-y-1"></div>
-            <div class="mb-2 flex items-center justify-between">
-                <span class="text-sm text-gray-400">오늘의 추천</span>
-                <label class="flex items-center gap-1 text-[11px] text-gray-400">
-                    <input id="reco-include-secret-toggle" type="checkbox" class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
-                    객잔 포함
-                </label>
-                <label class="flex items-center gap-1 text-[11px] text-gray-400">
-                    <input id="reco-balance-toggle" type="checkbox" class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
-                    균형
-                </label>
-            </div>
-            <div id="recommended-tabs" class="flex gap-2 mb-2 overflow-x-auto no-scrollbar flex-nowrap -mx-2 px-2">
-                <button id="reco-tab-mix" onclick="setRecommendedMode('mix')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">종합</button>
-                <button id="reco-tab-follow" onclick="setRecommendedMode('follow')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">팔로우</button>
-                <button id="reco-tab-new" onclick="setRecommendedMode('new')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">신규</button>
-                <button id="reco-tab-similar" onclick="setRecommendedMode('similar')" class="px-3 py-1.5 text-[11px] bg-[#1C1C1E] text-gray-300 rounded-full border border-gray-800">유사 키워드</button>
-            </div>
-            <div id="recommended-feed" class="mb-4 space-y-1"></div>
-            <div class="mb-2 flex items-center justify-between">
-                <span class="text-sm text-gray-400">강의 자료</span>
-                <div class="flex gap-2">
-                    <button onclick="navigate('materials-board')" class="text-xs text-yellow-400 hover:text-yellow-300">더보기</button>
-                    <button onclick="navigate('material-upload')" class="text-xs bg-yellow-600 text-black px-2 py-1.5 rounded hover:bg-yellow-500">올리기</button>
-                </div>
-            </div>
-            <div id="materials-preview" class="mb-4 space-y-1"></div>
-            <div class="space-y-1" id="posts-list-public"></div>
-        </div>
-        <div id="materials-board" class="app-view hidden">
-            <h2 class="text-2xl font-bold text-white mb-2">강의 자료</h2>
-            <div id="materials-list" class="space-y-2 min-h-[200px]"></div>
-        </div>
-        <div id="news-view" class="app-view hidden">
-            <h2 class="text-2xl font-bold text-white mb-2">증권 뉴스</h2>
-            <div class="flex items-center gap-2 mb-3">
-                <input id="news-query-input" type="text" class="flex-grow bg-black border border-gray-700 rounded-xl px-4 py-2 text-white focus:border-yellow-500 outline-none text-sm" placeholder="예: 코스피 OR 코스닥 OR 증시">
-                <button onclick="refreshNewsView()" class="bg-gray-800 text-white px-3 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">새로고침</button>
-            </div>
-            <div id="news-list" class="space-y-2 min-h-[200px]"></div>
-        </div>
-        <div id="material-upload" class="app-view hidden">
-            <h2 class="text-2xl font-bold text-white mb-2">강의 자료 올리기</h2>
-            <div class="bg-[#1C1C1E] p-4 rounded-2xl border border-gray-800 space-y-3">
-                <div>
-                    <div class="text-xs text-gray-400 mb-1">제목</div>
-                    <input id="mat-title" type="text" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-sm">
-                </div>
-                <div>
-                    <div class="text-xs text-gray-400 mb-1">소개(미리보기)</div>
-                    <textarea id="mat-preview" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-sm min-h-[60px]"></textarea>
-                </div>
-                <div>
-                    <div class="text-xs text-gray-400 mb-1">가격(원)</div>
-                    <input id="mat-price" type="number" min="0" step="100" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-sm">
-                </div>
-                <div>
-                    <div class="text-xs text-gray-400 mb-1">내용</div>
-                    <textarea id="mat-content" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-sm min-h-[160px]"></textarea>
-                </div>
-                <div class="flex justify-end">
-                    <button onclick="saveMaterial()" class="text-sm bg-yellow-600 text-black px-3 py-2 rounded-xl font-bold hover:bg-yellow-500 border border-yellow-700">등록</button>
-                </div>
-            </div>
-        </div>
-        <div id="stock-board" class="app-view hidden">
-            <h2 class="text-2xl font-bold text-white mb-2">종목 비급</h2>
-            <p class="text-gray-500 text-sm mb-6 flex items-center gap-2">
-                <span id="current-stock-name" class="text-yellow-400 font-semibold">삼성전자</span>
-                <span class="text-xs bg-gray-800 px-2 py-0.5 rounded-full">실시간</span>
-            </p>
-            <div id="stock-tabs" class="flex overflow-x-auto space-x-3 pb-2 mb-2 scroll-hidden"></div>
-            <div class="space-y-1" id="posts-list-stock"></div>
-        </div>
-        <div id="secret-inn" class="app-view hidden">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold text-white">암천 객잔</h2>
-                <button onclick="tryOpenWriteModal('secret')" class="text-xs bg-yellow-900/50 text-yellow-500 font-bold px-3 py-1.5 rounded-lg border border-yellow-700/50 hover:bg-yellow-900 transition">
-                    ✍️ 익명 글쓰기
+            
+            <nav class="flex flex-col gap-1 flex-1 overflow-y-auto no-scrollbar">
+                <button onclick="navigate('gangho-plaza')" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all text-sm font-medium" data-target="gangho-plaza">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                    광장
                 </button>
-            </div>
-            <div class="space-y-1" id="posts-list-secret"></div>
-        </div>
-            <div id="journal-board" class="app-view hidden">
-            <h2 class="text-2xl font-bold text-white mb-2">매매 일지</h2>
-            <div class="flex flex-wrap items-center gap-2 mb-3">
-                <input id="journal-filter-keyword" type="text" class="flex-1 min-w-0 bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs" placeholder="키워드/태그/메모">
-                <input id="journal-filter-strategy" type="text" class="bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs w-24 sm:w-28 flex-shrink-0" placeholder="전략">
-                <label class="flex items-center gap-1 text-xs bg-[#1C1C1E] border border-gray-800 rounded-xl px-2 py-1 flex-shrink-0">
-                    <input id="journal-filter-positive" type="checkbox" class="accent-yellow-500">
-                    <span class="text-gray-300">양수만</span>
-                </label>
-                <label class="flex items-center gap-1 text-xs bg-[#1C1C1E] border border-gray-800 rounded-xl px-2 py-1 flex-shrink-0">
-                    <input id="journal-filter-negative" type="checkbox" class="accent-yellow-500">
-                    <span class="text-gray-300">음수만</span>
-                </label>
-            </div>
-            <div class="space-y-1 pb-2" id="journal-board-list"></div>
-        </div>
-        <div id="post-detail" class="app-view hidden">
-            <div class="px-2 sm:px-3 md:px-4 max-w-none mx-auto">
-                <div class="pt-2">
-                    <h3 id="detail-title" class="text-2xl font-bold text-white mb-1 leading-snug"></h3>
-                    <div id="detail-meta-container" class="flex items-center gap-1.5 text-sm text-gray-400">
-                        <span id="detail-author"></span>
-                        <span>•</span>
-                        <span id="detail-date" class="text-[11px]"></span>
-                    </div>
-                </div>
-                <div class="mt-3">
-                    <div id="detail-content"></div>
-                </div>
-                    <div class="flex items-center justify-between mt-3">
-                    <div class="flex gap-3">
-                        <button onclick="toggleLike()" class="flex items-center gap-1 text-gray-400 hover:text-red-500 transition text-sm"><span class="text-lg">♥</span> <span id="detail-likes" class="text-sm">0</span></button>
-                        <span class="flex items-center gap-1 text-gray-400 text-sm"><span class="text-lg">👁</span> <span id="detail-views" class="text-sm">0</span></span>
-                    </div>
-                    <div class="flex gap-2">
-                        <button id="btn-share-link" class="text-xs bg-gray-800 text-gray-300 px-3 py-1.5 rounded-full hover:bg-gray-700">공유</button>
-                        <button id="btn-send-msg" class="hidden text-xs bg-gray-800 text-gray-300 px-3 py-1.5 rounded-full hover:bg-gray-700">밀서 보내기</button>
-                        <button onclick="openReportModal('post', state.currentPostId)" class="text-xs text-gray-500 hover:text-red-400 px-2">🚨 관아 신고</button>
-                        <button id="edit-post-btn" class="hidden text-xs text-blue-400 font-bold px-2">교정</button>
-                        <button id="delete-post-btn" class="hidden text-xs text-red-500 font-bold px-2">파기</button>
-                    </div>
-                </div>
-                <div class="mt-2">
-                    <div id="detail-prev-next" class="flex gap-2"></div>
-                </div>
-                <div class="mt-4">
-                    <div id="comments-list" class="mb-2 space-y-2"></div>
-                    <div class="relative">
-                        <textarea id="comment-input" placeholder="전서(댓글)를 남기시오... (Ctrl+Enter 전송)" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)) addComment()" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white pr-12 focus:border-gray-500 focus:outline-none transition resize-y min-h-[44px]"></textarea>
-                        <button onclick="addComment()" class="absolute right-2 top-2 bg-gray-700 text-white p-2 rounded-full hover:bg-gray-600">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                <button onclick="navigate('stock-board')" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all text-sm font-medium" data-target="stock-board">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                    종목 비급
+                </button>
+                 <button onclick="navigate('news-view')" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all text-sm font-medium" data-target="news-view">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    뉴스
+                </button>
+                 <button onclick="navigate('journal-board')" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all text-sm font-medium" data-target="journal-board">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+                    매매 일지
+                </button>
+                <div class="h-px bg-gray-800 my-2 mx-2"></div>
+                <div class="px-3 text-xs font-bold text-gray-500 mb-1">커뮤니티</div>
+                <button onclick="navigate('secret-inn')" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all text-sm font-medium" data-target="secret-inn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
+                    암천 객잔
+                </button>
+                <button onclick="navigate('free-board')" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all text-sm font-medium" data-target="free-board">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    자유 게시판
+                </button>
+                 <button onclick="openMenuPalette()" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all text-sm font-medium mt-auto">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                    전체 메뉴
+                </button>
+            </nav>
+            
+            <div id="auth-buttons-desk" class="pt-4 border-t border-gray-800"></div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-grow overflow-y-auto scroll-hidden bg-black relative w-full">
+            <div class="max-w-4xl mx-auto w-full p-4 md:p-8 pb-24 md:pb-8">
+                
+                <!-- Gangho Plaza (Home) -->
+                <div id="gangho-plaza" class="app-view">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-2xl font-bold text-white">강호 광장</h2>
+                        <button onclick="tryOpenWriteModal('public')" class="md:hidden p-2 bg-yellow-600 text-black rounded-full shadow-lg">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                         </button>
                     </div>
-                    <div class="text-[11px] text-gray-500 mt-1">Ctrl+Enter로 전송하시오</div>
-                </div>
-                <div class="mt-4 pt-3 border-t border-gray-800">
-                    <div class="flex items-center justify-between mb-2">
-                        <div class="text-[11px] text-gray-400">다른 비급</div>
-                        <label class="flex items-center gap-1 text-[11px] text-gray-400">
-                            <input id="detail-include-secret-toggle" type="checkbox" class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
-                            객잔 포함
-                        </label>
-                    </div>
-                    <div id="related-posts" class="space-y-1"></div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- My Page View -->
-        <div id="my-page" class="app-view hidden">
-            <h2 class="text-xl font-bold text-white mb-4">나의 본거지 (本據地)</h2>
-            
-            <!-- Profile Card -->
-            <div id="my-profile-card" class="bg-[#1C1C1E] p-5 rounded-3xl shadow-lg border border-gray-800 mb-6 text-center relative overflow-hidden">
-                <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-500 to-transparent opacity-50"></div>
-                
-                 <div class="w-16 h-16 bg-gray-700 rounded-full mx-auto mb-3 flex items-center justify-center text-2xl shadow-inner border-2 border-gray-600 relative overflow-hidden">
-                     <img id="my-avatar" class="w-full h-full object-cover hidden" alt="avatar">
-                     <span id="my-profile-icon">👤</span>
-                     <span id="my-badge-icon" class="absolute top-0 left-0 w-6 h-6 rounded-full bg-black/60 text-white text-xs flex items-center justify-center border border-gray-700 hidden">🐉</span>
-                    <span id="my-level-badge" class="absolute -bottom-1 -right-1 bg-yellow-600 text-black text-[10px] font-bold px-2 py-0.5 rounded-full border border-[#1C1C1E]">입문</span>
-                </div>
-                
-                <h3 id="my-nickname" class="text-lg font-bold text-white mb-1">익명의 협객</h3>
-                <p id="my-email" class="text-xs text-gray-500 mb-4">입문이 필요하오</p>
-                
-                <div class="flex justify-around border-t border-gray-700 pt-3">
-                    <div class="text-center">
-                        <div class="text-[11px] text-gray-500 mb-1">비급(글)</div>
-                        <div id="stat-posts" class="text-base font-bold text-white">0</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="text-[11px] text-gray-500 mb-1">전서(댓글)</div>
-                        <div id="stat-comments" class="text-base font-bold text-white">0</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="text-xs text-gray-500 mb-1">명성(추천)</div>
-                        <div id="stat-likes" class="text-lg font-bold text-yellow-500">0</div>
-                    </div>
-                </div>
-                <div id="my-level-progress" class="mt-3 px-6">
-                    <div class="text-[11px] text-gray-400 mb-1">다음 승급까지 <span id="my-level-need">0</span></div>
-                    <div class="h-1 bg-gray-700 rounded">
-                        <div id="my-level-progress-bar" class="h-1 bg-yellow-500 rounded" style="width:0%"></div>
-                    </div>
-                </div>
-                <div class="mt-3">
-                    <div class="text-xs text-gray-400 mb-1">문파 배지</div>
-                    <div id="my-guild-badges" class="flex flex-wrap gap-2 justify-center"></div>
-                </div>
-            </div>
-            
-            <!-- Tabs -->
-            <div class="flex border-b border-gray-800 mb-4 overflow-x-auto no-scrollbar flex-nowrap -mx-2 px-2">
-                <button onclick="switchMyPageTab('posts')" id="tab-my-posts" class="flex-1 pb-2 text-xs sm:text-sm font-medium text-yellow-500 border-b-2 border-yellow-500 transition whitespace-nowrap">나의 비급</button>
-                 <button onclick="switchMyPageTab('activity')" id="tab-my-activity" class="flex-1 pb-2 text-xs sm:text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition whitespace-nowrap">행적</button>
-                <button onclick="switchMyPageTab('bookmarks')" id="tab-my-bookmarks" class="flex-1 pb-2 text-xs sm:text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition whitespace-nowrap">관심 비급</button>
-                <button onclick="switchMyPageTab('journal')" id="tab-my-journal" class="flex-1 pb-2 text-xs sm:text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition whitespace-nowrap">매매 일지</button>
-                <button onclick="switchMyPageTab('settings')" id="tab-my-settings" class="flex-1 pb-2 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 transition">면모 정비</button>
-            </div>
-            
-            <!-- Tab Contents -->
-            <div id="my-posts-area" class="space-y-4 min-h-[200px]">
-                <!-- Posts injected here -->
-                <div class="text-center text-gray-500 py-10">작성한 비급이 없소.</div>
-            </div>
-            
-            <div id="my-bookmarks-area" class="hidden space-y-4 min-h-[200px]">
-                <!-- Bookmarks injected here -->
-                <div class="text-center text-gray-500 py-10">아직 관심 비급이 없소.</div>
-            </div>
-            <div id="my-journal-area" class="hidden space-y-4">
-                <div class="bg-[#1C1C1E] p-4 rounded-2xl border border-gray-800">
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <div class="text-xs text-gray-400 mb-1">기초 자산</div>
-                            <input id="journal-base" type="number" step="0.01" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs" placeholder="예: 10000000">
+
+                    <!-- Mini Trends Card -->
+                    <div id="mini-trends" class="mb-4">
+                        <div class="card-elegant p-4 rounded-2xl border border-gray-800 bg-[#1C1C1E]">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="pr-4">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <div id="mini-kospi-head" class="text-xs font-bold text-gray-400">KOSPI</div>
+                                        <div id="mini-kospi-info" class="text-xs font-mono text-gray-300">-</div>
+                                    </div>
+                                    <div id="mini-kospi" class="text-sm font-bold text-white">-</div>
+                                </div>
+                                <div class="pl-4 border-l border-gray-700">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <div id="mini-kosdaq-head" class="text-xs font-bold text-gray-400">KOSDAQ</div>
+                                        <div id="mini-kosdaq-info" class="text-xs font-mono text-gray-300">-</div>
+                                    </div>
+                                    <div id="mini-kosdaq" class="text-sm font-bold text-white">-</div>
+                                </div>
+                            </div>
+                            <div id="mini-trends-updated" class="text-[10px] text-gray-600 mt-2 text-right">갱신: -</div>
                         </div>
-                        <div>
-                            <div class="text-xs text-gray-400 mb-1">수익(손실)</div>
-                            <input id="journal-profit" type="number" step="0.01" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs" placeholder="예: 150000">
+                    </div>
+
+                    <!-- Main Grid Layout -->
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <!-- Left Column: Feed -->
+                        <div class="lg:col-span-2 space-y-6">
+                            <!-- News Section -->
+                            <div>
+                                <div class="flex items-center justify-between mb-3">
+                                    <h3 class="text-lg font-bold text-white">최신 뉴스</h3>
+                                    <button onclick="navigate('news-view')" class="text-xs text-yellow-500 hover:text-yellow-400 font-bold">더보기</button>
+                                </div>
+                                <div id="news-feed" class="space-y-3"></div>
+                            </div>
+
+                            <!-- Posts Feed -->
+                            <div>
+                                <div class="flex items-center justify-between mb-3">
+                                    <h3 class="text-lg font-bold text-white">실시간 비급</h3>
+                                    <div class="flex gap-2">
+                                        <button onclick="navigate('stock-board')" class="text-xs text-gray-400 hover:text-white">종목별</button>
+                                        <button onclick="navigate('secret-inn')" class="text-xs text-gray-400 hover:text-white">객잔</button>
+                                    </div>
+                                </div>
+                                <div class="space-y-3" id="posts-list-public"></div>
+                            </div>
                         </div>
-                        <div>
-                            <div class="text-xs text-gray-400 mb-1">날짜</div>
-                            <input id="journal-date" type="date" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs">
+
+                        <!-- Right Column: Widgets -->
+                        <div class="space-y-6 hidden lg:block">
+                            <div id="weekly-digest" class="hidden">
+                                <div class="card-elegant p-4 rounded-2xl bg-[#1C1C1E] border border-gray-800">
+                                    <div class="text-sm text-yellow-500 font-bold mb-3 uppercase tracking-wider">Weekly Best</div>
+                                    <div id="weekly-digest-list" class="space-y-2"></div>
+                                </div>
+                            </div>
+                            
+                            <div id="rookie-spotlight" class="hidden">
+                                <div class="card-elegant p-4 rounded-2xl bg-[#1C1C1E] border border-gray-800">
+                                    <div class="text-sm text-blue-400 font-bold mb-3 uppercase tracking-wider">Rookie Rising</div>
+                                    <div id="rookie-spotlight-list" class="space-y-2"></div>
+                                </div>
+                            </div>
+
+                            <div id="sponsor-section" class="hidden">
+                                <div class="card-elegant p-4 rounded-2xl bg-[#1C1C1E] border border-gray-800">
+                                    <div class="text-xs text-gray-500 font-bold mb-2">SPONSORED</div>
+                                    <div id="sponsor-list" class="space-y-2"></div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="flex items-end">
-                            <label class="flex items-center gap-2 text-xs bg-[#1C1C1E] border border-gray-800 rounded-xl px-3 py-2 w-full">
-                                <input id="journal-public" type="checkbox" class="accent-yellow-500">
-                                <span class="text-gray-300">공개</span>
+                    </div>
+                </div>
+
+                <!-- Stock Board -->
+                <div id="stock-board" class="app-view hidden">
+                    <h2 class="text-2xl font-bold text-white mb-2">종목 비급</h2>
+                    <p class="text-gray-500 text-sm mb-6 flex items-center gap-2">
+                        <span id="current-stock-name" class="text-yellow-400 font-semibold">삼성전자</span>
+                        <span class="text-xs bg-gray-800 px-2 py-0.5 rounded-full">실시간</span>
+                    </p>
+                    <div id="stock-tabs" class="flex overflow-x-auto space-x-3 pb-2 mb-4 scroll-hidden border-b border-gray-800"></div>
+                    <div class="space-y-3" id="posts-list-stock"></div>
+                </div>
+
+                <!-- News View -->
+                <div id="news-view" class="app-view hidden">
+                    <h2 class="text-2xl font-bold text-white mb-4">증권 뉴스</h2>
+                    <div class="flex items-center gap-2 mb-6">
+                        <div class="relative flex-grow">
+                            <input id="news-query-input" type="text" class="w-full bg-[#1C1C1E] border border-gray-800 rounded-xl pl-10 pr-4 py-3 text-white focus:border-yellow-500 outline-none text-sm transition-colors" placeholder="키워드 검색 (예: 반도체)">
+                            <svg class="absolute left-3 top-3.5 text-gray-500 w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                        </div>
+                        <button onclick="refreshNewsView()" class="bg-gray-800 text-white px-4 py-3 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-700">새로고침</button>
+                    </div>
+                    <div id="news-list" class="space-y-3 min-h-[200px]"></div>
+                </div>
+
+                <!-- Materials Board -->
+                <div id="materials-board" class="app-view hidden">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-2xl font-bold text-white">강의 자료</h2>
+                        <button onclick="navigate('material-upload')" class="text-xs bg-yellow-600 text-black px-3 py-1.5 rounded-lg font-bold hover:bg-yellow-500">자료 올리기</button>
+                    </div>
+                    <div id="materials-list" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+                </div>
+
+                <!-- Journal Board -->
+                <div id="journal-board" class="app-view hidden">
+                    <h2 class="text-2xl font-bold text-white mb-4">매매 일지</h2>
+                    <div class="flex flex-wrap items-center gap-2 mb-4 p-4 bg-[#1C1C1E] rounded-2xl border border-gray-800">
+                        <input id="journal-filter-keyword" type="text" class="flex-1 min-w-0 bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs" placeholder="키워드 검색">
+                        <input id="journal-filter-strategy" type="text" class="bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs w-28" placeholder="전략">
+                        <div class="flex items-center gap-2 border-l border-gray-700 pl-2">
+                            <label class="flex items-center gap-1 text-xs text-gray-300 cursor-pointer">
+                                <input id="journal-filter-positive" type="checkbox" class="accent-yellow-500 rounded bg-gray-800 border-gray-600"> 수익
+                            </label>
+                            <label class="flex items-center gap-1 text-xs text-gray-300 cursor-pointer">
+                                <input id="journal-filter-negative" type="checkbox" class="accent-yellow-500 rounded bg-gray-800 border-gray-600"> 손실
                             </label>
                         </div>
                     </div>
-                    <div class="mt-3">
-                        <textarea id="journal-note" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs" rows="3" placeholder="메모"></textarea>
-                    </div>
-                    <div class="mt-3 grid grid-cols-2 gap-3">
-                        <div>
-                            <div class="text-xs text-gray-400 mb-1">전략</div>
-                            <input id="journal-strategy" type="text" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs" placeholder="예: 스윙, 데이">
-                        </div>
-                        <div>
-                            <div class="text-xs text-gray-400 mb-1">태그</div>
-                            <input id="journal-tags" type="text" class="w-full bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs" placeholder="예: 뉴스, 돌파">
-                        </div>
-                    </div>
-                    <div class="mt-3">
-                        <button onclick="saveJournalEntry()" class="w-full bg-gray-800 text-white py-3 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">기록</button>
-                    </div>
-                </div>
-                <div class="bg-[#1C1C1E] p-4 rounded-2xl border border-gray-800">
-                    <div class="flex items-center justify-between mb-2">
-                        <div class="text-xs text-gray-400">최근 30일 성과</div>
-                        <div id="my-journal-stats" class="text-[11px] text-gray-500"></div>
-                    </div>
-                    <canvas id="my-journal-chart" width="600" height="120" class="w-full h-20"></canvas>
-                </div>
-                <div class="bg-[#1C1C1E] p-4 rounded-2xl border border-gray-800">
-                    <div class="flex items-center justify-between mb-2">
-                        <div class="text-xs text-gray-400">월간 누적 성과</div>
-                        <div class="text-[11px] text-gray-500">최근 6개월</div>
-                    </div>
-                    <div class="grid grid-cols-2 gap-2 mb-2">
-                        <input id="journal-goal-month" type="month" class="bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs">
-                        <div class="flex gap-2">
-                            <input id="journal-goal-target" type="number" step="0.01" class="flex-1 bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs" placeholder="목표(₩)">
-                            <button onclick="saveJournalGoal()" class="bg-gray-800 text-white px-3 py-2 rounded-xl text-xs hover:bg-gray-700 border border-gray-600">기록</button>
-                        </div>
-                    </div>
-                    <div id="my-journal-monthly" class="grid grid-cols-3 gap-2"></div>
-                    <canvas id="my-journal-monthly-bars" width="600" height="100" class="w-full h-16 mt-2"></canvas>
-                    <canvas id="my-journal-cum-chart" width="600" height="100" class="w-full h-16 mt-2"></canvas>
-                </div>
-                <div>
-                    <div class="flex items-center justify-between mb-2">
-                        <div class="text-xs text-gray-400">나의 매매 일지</div>
-                        <button onclick="navigate('journal-board')" class="text-xs text-yellow-400 hover:text-yellow-300">공개 일지 더보기</button>
-                    </div>
-                    <div id="my-journal-list" class="space-y-2"></div>
-                </div>
-            </div>
-             
-             
-             <div id="my-activity-area" class="hidden space-y-4 min-h-[200px]">
-                 <div class="flex items-center justify-between">
-                     <div class="text-xs text-gray-400">최근 행적</div>
-                    <div class="flex gap-2 overflow-x-auto no-scrollbar flex-nowrap -mx-2 px-2">
-                        <button onclick="switchActivityFilter('all')" id="act-filter-all" class="px-3 py-1 rounded-full text-xs sm:text-sm bg-gray-800 text-gray-300 border border-gray-700 whitespace-nowrap">전체</button>
-                        <button onclick="switchActivityFilter('comment')" id="act-filter-comment" class="px-3 py-1 rounded-full text-xs sm:text-sm bg-gray-800 text-gray-300 border border-gray-700 whitespace-nowrap">전서</button>
-                        <button onclick="switchActivityFilter('like')" id="act-filter-like" class="px-3 py-1 rounded-full text-xs sm:text-sm bg-gray-800 text-gray-300 border border-gray-700 whitespace-nowrap">명성</button>
-                    </div>
-                 </div>
-                     <div class="flex items-center gap-2">
-                         <input id="activity-keyword" type="text" class="flex-1 bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs" placeholder="키워드로 찾기" oninput="setActivityKeyword(this.value)">
-                         <select id="activity-days" class="bg-black border border-gray-700 rounded-xl px-3 py-2 text-white text-xs" onchange="setActivityDays(this.value)">
-                             <option value="7">최근 7일</option>
-                             <option value="30" selected>최근 30일</option>
-                             <option value="90">최근 90일</option>
-                         </select>
-                     </div>
-                 <div id="activity-list" class="space-y-2"></div>
-             </div>
-            
-            <div id="my-settings-area" class="hidden space-y-6 p-2">
-                 <div>
-                     <h4 class="text-sm font-bold text-gray-400 mb-3">문파 깃발 (배너)</h4>
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <input id="banner-input" type="file" accept="image/*" class="flex-1 min-w-0 bg-black border border-gray-700 rounded-xl px-3 py-2 text-white">
-                        <button onclick="updateBanner()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">교체</button>
-                        <button onclick="removeBanner()" class="bg-red-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-700 border border-red-900">제거</button>
-                    </div>
-                </div>
-                <div>
-                    <h4 class="text-sm font-bold text-gray-400 mb-3">입금 확인 요청</h4>
-                    <div class="flex items-center gap-2 mb-2">
-                        <button onclick="loadMyDeposits()" class="text-xs px-2 py-1 bg-gray-800 text-gray-300 rounded">새로고침</button>
-                    </div>
-                    <div id="my-deposits-list" class="space-y-2 min-h-[80px]"></div>
-                </div>
-                <div>
-                    <h4 class="text-sm font-bold text-gray-400 mb-3">용모 (프로필)</h4>
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <input id="avatar-input" type="file" accept="image/*" class="flex-1 min-w-0 bg-black border border-gray-700 rounded-xl px-3 py-2 text-white">
-                        <button onclick="updateAvatar()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">교체</button>
-                        <button onclick="removeAvatar()" class="bg-red-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-700 border border-red-900">제거</button>
-                    </div>
-                </div>
-                <div>
-                    <h4 class="text-sm font-bold text-gray-400 mb-3">배경 풍경 (테마)</h4>
-                    <div class="flex gap-2">
-                        <select id="theme-style-select" class="flex-grow bg-black border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-yellow-500 outline-none">
-                            <option value="dark">암천</option>
-                            <option value="gold">금룡</option>
-                            <option value="cyan">청룡</option>
-                        </select>
-                        <button onclick="updateThemeStyle()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">적용</button>
-                    </div>
-                 </div>
-                 <div>
-                     <h4 class="text-sm font-bold text-gray-400 mb-3">전갈 설정</h4>
-                     <div class="grid grid-cols-3 gap-2">
-                         <label class="flex items-center gap-2 text-xs bg-[#1C1C1E] border border-gray-800 rounded-xl px-3 py-2">
-                             <input id="noti-comment" type="checkbox" class="accent-yellow-500">
-                             <span class="text-gray-300">전서 전갈</span>
-                         </label>
-                         <label class="flex items-center gap-2 text-xs bg-[#1C1C1E] border border-gray-800 rounded-xl px-3 py-2">
-                             <input id="noti-like" type="checkbox" class="accent-yellow-500">
-                             <span class="text-gray-300">명성 전갈</span>
-                         </label>
-                         <label class="flex items-center gap-2 text-xs bg-[#1C1C1E] border border-gray-800 rounded-xl px-3 py-2">
-                             <input id="noti-message" type="checkbox" class="accent-yellow-500">
-                             <span class="text-gray-300">밀서 전갈</span>
-                         </label>
-                     </div>
-                     <div class="mt-2">
-                        <button onclick="updateNotificationSettings()" class="w-full bg-gray-800 text-white py-3 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">설정 기록</button>
-                    </div>
-                 </div>
-                <div>
-                    <h4 class="text-sm font-bold text-gray-400 mb-3">미디어 프리뷰</h4>
-                    <div class="flex items-center gap-2">
-                        <label class="flex items-center gap-2 text-xs bg-[#1C1C1E] border border-gray-800 rounded-xl px-3 py-2">
-                            <input id="preview-enabled" type="checkbox" class="accent-yellow-500">
-                            <span class="text-gray-300">자동 프리뷰 사용 (YouTube·이미지·카드)</span>
-                        </label>
-                        <button onclick="updatePreviewSetting()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">적용</button>
-                    </div>
-                    <p class="text-[11px] text-gray-500 mt-1">프록시가 설정된 경우 도메인 카드에 제목/설명 표시.</p>
-                </div>
-                <div>
-                    <h4 class="text-sm font-bold text-gray-400 mb-3">추천 데이터 수집</h4>
-                    <div class="flex items-center gap-2">
-                        <label class="flex items-center gap-2 text-xs bg-[#1C1C1E] border border-gray-800 rounded-xl px-3 py-2">
-                            <input id="reco-logging-enabled" type="checkbox" class="accent-yellow-500">
-                            <span class="text-gray-300">임프레션·클릭 데이터 수집 허용</span>
-                        </label>
-                        <button onclick="updateRecoLoggingSetting()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">적용</button>
-                    </div>
-                    <p class="text-[11px] text-gray-500 mt-1">추천 품질 향상을 위해 수집하며, 마이페이지에서 언제든 비활성화 가능.</p>
-                </div>
-                <div>
-                    <h4 class="text-sm font-bold text-gray-400 mb-3">링크 카드 프록시</h4>
-                    <div class="flex items-center gap-2">
-                        <input id="proxy-url-input" type="text" class="flex-grow bg-black border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-yellow-500 outline-none" placeholder="예: https://your-proxy.example/meta">
-                        <button onclick="updateProxySetting()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">기록</button>
-                    </div>
-                    <p class="text-[11px] text-gray-500 mt-1">서버에서 Open Graph 메타를 추출하는 주소를 기입하시오.</p>
-                </div>
-                <div>
-                    <h4 class="text-sm font-bold text-gray-400 mb-3">증권 뉴스 프록시</h4>
-                    <div class="flex items-center gap-2">
-                        <input id="news-proxy-input" type="text" class="flex-grow bg-black border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-yellow-500 outline-none" placeholder="예: https://your-proxy.example/news">
-                        <button onclick="updateNewsProxySetting()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">기록</button>
-                    </div>
-                    <p class="text-[11px] text-gray-500 mt-1">JSON 배열 또는 {items:[]} 형식으로 제목/링크/출처/시간을 반환.</p>
-                </div>
-                <div>
-                    <h4 class="text-sm font-bold text-gray-400 mb-3">호(닉네임) 개명</h4>
-                    <div class="flex gap-2">
-                        <input id="edit-nickname" type="text" class="flex-grow bg-black border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-yellow-500 outline-none" placeholder="새로운 호">
-                        <button onclick="updateNickname()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">개명</button>
-                    </div>
-                </div>
-                 <div>
-                     <h4 class="text-sm font-bold text-gray-400 mb-3">문양(배지) 양식</h4>
-                     <div class="flex gap-2">
-                         <select id="badge-style-select" class="flex-grow bg-black border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-yellow-500 outline-none">
-                             <option value="auto">자동 (내공 기반)</option>
-                             <option value="gold">금룡 (금색)</option>
-                             <option value="cyan">청룡 (청색)</option>
-                             <option value="gray">무색 (중립)</option>
-                         </select>
-                         <button onclick="updateBadgeStyle()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">기록</button>
-                    </div>
-                </div>
-                <div>
-                    <h4 class="text-sm font-bold text-gray-400 mb-3">문양(배지) 형태</h4>
-                    <div class="flex gap-2">
-                        <select id="badge-icon-select" class="flex-grow bg-black border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-yellow-500 outline-none">
-                            <option value="">없음</option>
-                            <option value="dragon">용(🐉)</option>
-                            <option value="star">성(⭐)</option>
-                            <option value="sword">검(⚔️)</option>
-                        </select>
-                        <button onclick="updateBadgeIcon()" class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">기록</button>
-                    </div>
-                 </div>
-                
-                <div>
-                    <h4 class="text-sm font-bold text-gray-400 mb-3">암호 재설정</h4>
-                    <input id="edit-pw" type="password" class="w-full bg-black border border-gray-700 rounded-xl px-4 py-3 text-white mb-2 focus:border-yellow-500 outline-none" placeholder="새 암호 (6자 이상)">
-                    <button onclick="updatePassword()" class="w-full bg-gray-800 text-white py-3 rounded-xl text-sm font-bold hover:bg-gray-700 border border-gray-600">암호 재설정</button>
+                    <div class="space-y-3" id="journal-board-list"></div>
                 </div>
 
-                <div class="pt-6 border-t border-gray-800">
-                    <button onclick="logout()" class="w-full py-3 text-red-400 font-bold hover:text-red-300 text-sm border border-red-900/30 rounded-xl bg-red-900/10 mb-3">하산하기 (떠나기)</button>
-                    <p class="text-[10px] text-gray-600 text-center">강호를 잠시 떠나시겠소? 언제든 다시 돌아올 수 있소.</p>
+                <!-- Secret Inn -->
+                <div id="secret-inn" class="app-view hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold text-white">암천 객잔</h2>
+                        <button onclick="tryOpenWriteModal('secret')" class="text-xs bg-gray-800 text-gray-300 px-3 py-2 rounded-lg border border-gray-700 hover:bg-gray-700 transition flex items-center gap-2">
+                            <span>🎭</span> 익명 글쓰기
+                        </button>
+                    </div>
+                    <div class="space-y-3" id="posts-list-secret"></div>
                 </div>
+
+                <!-- Post Detail (Embedded) -->
+                <div id="post-detail" class="app-view hidden">
+                    <div class="max-w-2xl mx-auto">
+                        <button onclick="window.history.back()" class="mb-4 text-gray-400 hover:text-white flex items-center gap-1 text-sm">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                            돌아가기
+                        </button>
+                        <div class="bg-[#1C1C1E] rounded-2xl border border-gray-800 overflow-hidden">
+                            <div class="p-6">
+                                <h3 id="detail-title" class="text-2xl font-bold text-white mb-2 leading-tight"></h3>
+                                <div id="detail-meta-container" class="flex items-center gap-2 text-sm text-gray-400 mb-6 pb-4 border-b border-gray-800">
+                                    <span id="detail-author"></span>
+                                    <span>•</span>
+                                    <span id="detail-date" class="text-xs"></span>
+                                </div>
+                                <div id="detail-content" class="prose prose-invert max-w-none text-gray-300"></div>
+                            </div>
+                            <div class="bg-black/30 p-4 border-t border-gray-800 flex items-center justify-between">
+                                <div class="flex gap-4">
+                                    <button onclick="toggleLike()" class="flex items-center gap-1.5 text-gray-400 hover:text-red-500 transition">
+                                        <span class="text-xl">♥</span> <span id="detail-likes" class="text-sm font-bold">0</span>
+                                    </button>
+                                    <div class="flex items-center gap-1.5 text-gray-400">
+                                        <span class="text-xl">👁</span> <span id="detail-views" class="text-sm font-bold">0</span>
+                                    </div>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button id="btn-share-link" class="p-2 text-gray-400 hover:text-white bg-gray-800 rounded-full"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg></button>
+                                    <button onclick="openReportModal('post', state.currentPostId)" class="p-2 text-gray-400 hover:text-red-500 bg-gray-800 rounded-full"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg></button>
+                                    <button id="delete-post-btn" class="hidden p-2 text-red-500 hover:text-red-400 bg-red-900/20 rounded-full"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-6">
+                            <h4 class="text-lg font-bold text-white mb-4">전서 (댓글)</h4>
+                            <div class="relative mb-6">
+                                <textarea id="comment-input" placeholder="의견을 남기시오..." class="w-full bg-[#1C1C1E] border border-gray-800 rounded-xl p-4 text-sm text-white focus:border-yellow-500 focus:outline-none min-h-[80px] resize-y"></textarea>
+                                <button onclick="addComment()" class="absolute right-3 bottom-3 bg-yellow-600 text-black px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-yellow-500">전송</button>
+                            </div>
+                            <div id="comments-list" class="space-y-4"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- My Page (Simplified) -->
+                <div id="my-page" class="app-view hidden">
+                    <!-- Profile Card -->
+                    <div id="my-profile-card" class="bg-[#1C1C1E] p-6 rounded-3xl border border-gray-800 mb-6 text-center relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-500 to-transparent opacity-50"></div>
+                         <div class="w-20 h-20 bg-gray-800 rounded-full mx-auto mb-4 flex items-center justify-center text-3xl shadow-inner border-2 border-gray-700 relative overflow-hidden">
+                             <img id="my-avatar" class="w-full h-full object-cover hidden" alt="avatar">
+                             <span id="my-profile-icon">👤</span>
+                             <span id="my-badge-icon" class="absolute top-0 left-0 w-6 h-6 rounded-full bg-black/60 text-white text-xs flex items-center justify-center border border-gray-700 hidden">🐉</span>
+                        </div>
+                        <h3 id="my-nickname" class="text-xl font-bold text-white mb-1">익명의 협객</h3>
+                        <p id="my-email" class="text-sm text-gray-500 mb-6">입문이 필요하오</p>
+                        <div class="flex justify-center gap-8 border-t border-gray-700 pt-4">
+                            <div class="text-center">
+                                <div class="text-xs text-gray-500 mb-1">비급</div>
+                                <div id="stat-posts" class="text-lg font-bold text-white">0</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-xs text-gray-500 mb-1">전서</div>
+                                <div id="stat-comments" class="text-lg font-bold text-white">0</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-xs text-gray-500 mb-1">명성</div>
+                                <div id="stat-likes" class="text-lg font-bold text-yellow-500">0</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tabs -->
+                    <div class="flex border-b border-gray-800 mb-6 overflow-x-auto no-scrollbar">
+                        <button onclick="switchMyPageTab('posts')" id="tab-my-posts" class="px-4 pb-3 text-sm font-medium text-yellow-500 border-b-2 border-yellow-500 whitespace-nowrap">나의 비급</button>
+                        <button onclick="switchMyPageTab('activity')" id="tab-my-activity" class="px-4 pb-3 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 whitespace-nowrap">행적</button>
+                        <button onclick="switchMyPageTab('bookmarks')" id="tab-my-bookmarks" class="px-4 pb-3 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 whitespace-nowrap">관심</button>
+                        <button onclick="switchMyPageTab('settings')" id="tab-my-settings" class="px-4 pb-3 text-sm font-medium text-gray-500 border-b-2 border-transparent hover:text-gray-300 whitespace-nowrap">설정</button>
+                    </div>
+                    
+                    <!-- Content Areas -->
+                    <div id="my-posts-area" class="space-y-4"></div>
+                    <div id="my-activity-area" class="hidden space-y-4"></div>
+                    <div id="my-bookmarks-area" class="hidden space-y-4"></div>
+                    <div id="my-settings-area" class="hidden space-y-6">
+                        <!-- Settings Content -->
+                        <div class="space-y-4">
+                            <button onclick="logout()" class="w-full py-3 text-red-400 font-bold bg-red-900/10 border border-red-900/30 rounded-xl">하산하기</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Placeholder Views for Other Boards -->
+                <div id="free-board" class="app-view hidden"><h2 class="text-2xl font-bold text-white mb-4">자유 게시판</h2><div id="free-board-list" class="space-y-3"></div></div>
+                <div id="humor-board" class="app-view hidden"><h2 class="text-2xl font-bold text-white mb-4">오늘의 유머</h2><div id="humor-board-list" class="space-y-3"></div></div>
+                <div id="debate-board" class="app-view hidden"><h2 class="text-2xl font-bold text-white mb-4">오늘의 토론</h2><div id="debate-board-list" class="space-y-3"></div></div>
+                <div id="music-board" class="app-view hidden"><h2 class="text-2xl font-bold text-white mb-4">음악 이야기</h2><div id="music-board-list" class="space-y-3"></div></div>
+                <div id="travel-board" class="app-view hidden"><h2 class="text-2xl font-bold text-white mb-4">여행 탐방</h2><div id="travel-board-list" class="space-y-3"></div></div>
+                <div id="event-board" class="app-view hidden"><h2 class="text-2xl font-bold text-white mb-4">이벤트</h2><div id="event-board-list" class="space-y-3"></div></div>
+                <div id="market-today" class="app-view hidden"><h2 class="text-2xl font-bold text-white mb-4">오늘의 시황</h2><div id="market-today-wrap"></div></div>
+                <div id="notice-board" class="app-view hidden"><h2 class="text-2xl font-bold text-white mb-4">공지 사항</h2><div id="notice-board-list" class="space-y-3"></div></div>
+                <div id="welcome-board" class="app-view hidden"><h2 class="text-2xl font-bold text-white mb-4">가입 인사</h2><div id="welcome-board-list" class="space-y-3"></div></div>
+                <div id="kiwoom-catch" class="app-view hidden"><h2 class="text-2xl font-bold text-white mb-4">키움 캐치</h2><div id="kiwoom-catch-list" class="space-y-3"></div></div>
+                <div id="profit-cert" class="app-view hidden"><h2 class="text-2xl font-bold text-white mb-4">수익 인증</h2><div id="profit-cert-list" class="space-y-3"></div></div>
+                <div id="material-upload" class="app-view hidden"></div> <!-- Logic handled by JS -->
+
             </div>
-        </div>
-    </main>
-    
-    <nav class="flex-none z-40 glass glass-border bg-[#1C1C1E] pb-safe">
-        <div class="flex justify-around max-w-md mx-auto">
-            <button onclick="navigate('gangho-plaza')" class="nav-btn flex-1 py-3 text-xs sm:text-sm font-medium whitespace-nowrap" aria-selected="true">광장</button>
-            <button onclick="navigate('materials-board')" class="nav-btn flex-1 py-3 text-xs sm:text-sm font-medium whitespace-nowrap">배우기</button>
-            <button onclick="navigate('journal-board')" class="nav-btn flex-1 py-3 text-xs sm:text-sm font-medium whitespace-nowrap">매매 일지</button>
-            <button onclick="navigate('my-page')" id="nav-my-page" class="hidden nav-btn flex-1 py-3 text-xs sm:text-sm font-medium whitespace-nowrap">본거지</button>
+        </main>
+    </div>
+
+    <!-- Mobile Bottom Navigation -->
+    <nav class="md:hidden flex-none z-50 bg-[#1C1C1E]/95 backdrop-blur-md border-t border-gray-800 pb-safe-nav">
+        <div class="grid grid-cols-5 h-16">
+            <button onclick="navigate('gangho-plaza')" class="nav-btn flex flex-col items-center justify-center text-gray-500 hover:text-white active:scale-95 transition-transform" aria-selected="true" data-target="gangho-plaza">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                <span class="text-[10px] mt-1 font-medium">광장</span>
+            </button>
+            <button onclick="navigate('stock-board')" class="nav-btn flex flex-col items-center justify-center text-gray-500 hover:text-white active:scale-95 transition-transform" data-target="stock-board">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                <span class="text-[10px] mt-1 font-medium">종목</span>
+            </button>
+            <button onclick="tryOpenWriteModal(getCurrentViewType())" class="flex flex-col items-center justify-center -mt-5">
+                <div class="w-14 h-14 bg-yellow-500 rounded-full flex items-center justify-center shadow-lg shadow-yellow-500/20 text-black transform active:scale-90 transition-transform">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                </div>
+            </button>
+            <button onclick="navigate('journal-board')" class="nav-btn flex flex-col items-center justify-center text-gray-500 hover:text-white active:scale-95 transition-transform" data-target="journal-board">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+                <span class="text-[10px] mt-1 font-medium">일지</span>
+            </button>
+            <button onclick="openMenuPalette()" class="nav-btn flex flex-col items-center justify-center text-gray-500 hover:text-white active:scale-95 transition-transform">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                <span class="text-[10px] mt-1 font-medium">전체</span>
+            </button>
         </div>
     </nav>
-    
-    <!-- Floating Action Button -->
-    <button id="fab-write-btn" onclick="tryOpenWriteModal(getCurrentViewType())" class="fixed bottom-24 right-4 w-12 h-12 bg-yellow-500/70 text-black rounded-full shadow-lg flex items-center justify-center text-2xl font-light hover:scale-105 transition-transform z-50">
-        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-    </button>
-    <button id="back-to-top-btn" class="hidden fixed bottom-4 left-4 w-10 h-10 bg-gray-800/70 text-white rounded-full shadow-lg flex items-center justify-center text-sm z-50" onclick="window.scrollTo({ top: 0, behavior: 'smooth' })">↑</button>
-    
-    <!-- Footer -->
-    <footer id="site-footer" class="text-center py-8 text-xs text-gray-500">
-        <div class="space-x-4 mb-2">
-            <button onclick="openLegalModal('terms')" class="hover:text-gray-300">이용약관</button>
-            <button onclick="openLegalModal('privacy')" class="hover:text-gray-300">개인정보처리방침</button>
-        </div>
-        <p>천금문 (千金門) © 2024</p>
-    </footer>
 
-    <!-- Write Modal -->
+    <!-- Global Modals -->
     <div id="newPostModal" class="hidden fixed inset-0 bg-black z-[60] flex flex-col animate-slide-up">
         <div class="flex items-center justify-between px-4 py-3 bg-[#1C1C1E]/90 backdrop-blur-md border-b border-gray-800 sticky top-0 z-10">
             <button onclick="closeModal('newPostModal')" class="text-gray-400 text-base font-medium hover:text-white">철회</button>
             <span id="post-modal-title" class="font-bold text-white text-base">새로운 비급</span>
             <button onclick="savePost()" class="text-yellow-500 font-bold text-base hover:text-yellow-400 disabled:opacity-50" id="save-post-btn">등록</button>
         </div>
-
         <div class="flex-grow overflow-y-auto flex flex-col bg-black relative">
             <div class="px-4 py-4 border-b border-gray-800">
                 <div class="flex space-x-6 text-sm overflow-x-auto scroll-hidden">
@@ -615,7 +416,6 @@
                     </label>
                 </div>
             </div>
-
             <div id="stock-area" class="hidden px-4 py-3 bg-[#1C1C1E]">
                 <input type="text" id="stock-input" list="stock-options" class="w-full bg-transparent text-white py-1 text-base placeholder-gray-600 focus:outline-none" placeholder="종목명 (예: 삼성전자)">
                 <datalist id="stock-options"></datalist>
@@ -625,14 +425,11 @@
                     <option value="" disabled selected>무공(말머리) 선택하시오</option>
                 </select>
             </div>
-
             <div class="px-4 py-3">
                 <input id="new-post-title" type="text" placeholder="제목을 적으시오" oninput="autoSavePost()" class="w-full bg-transparent border-none text-white text-2xl font-bold placeholder-gray-600 focus:outline-none py-2">
             </div>
-
             <div id="new-post-content" contenteditable="true" placeholder="무림의 지혜를 나누어 주시오..." oninput="autoSavePost()" class="flex-grow px-4 py-2 text-lg text-gray-200 focus:outline-none pb-20 leading-relaxed"></div>
         </div>
-
         <div class="editor-toolbar flex items-center justify-between px-4 py-3 bg-[#1C1C1E] border-t border-gray-800 safe-area-bottom">
             <div class="flex items-center space-x-4">
                 <button onclick="formatDoc('bold')" class="text-gray-400 hover:text-white"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path></svg></button>
@@ -642,8 +439,94 @@
             <span id="autosave-indicator" class="text-xs text-green-500 opacity-0 transition-opacity">기록됨</span>
         </div>
     </div>
-    
-    <!-- Message Modal (New Feature) -->
+
+    <!-- Auth Modal -->
+    <div id="authModal" class="hidden fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-[#1C1C1E] w-full max-w-sm p-8 rounded-3xl shadow-2xl border border-gray-800">
+            <h3 class="text-2xl font-bold text-white mb-6 text-center">문파 입문</h3>
+            <div class="flex border-b border-gray-700 mb-6">
+                <button id="tab-login" onclick="switchAuthTab('login')" class="flex-1 pb-3 text-sm font-bold text-white border-b-2 border-white transition">입문(로그인)</button>
+                <button id="tab-signup" onclick="switchAuthTab('signup')" class="flex-1 pb-3 text-sm font-bold text-gray-500 border-b-2 border-transparent transition hover:text-gray-300">문파등록</button>
+            </div>
+            <input id="auth-email" type="email" placeholder="서신 주소 (이메일)" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-3 text-base focus:border-yellow-500 outline-none">
+            <input id="auth-password" type="password" placeholder="비급 봉인 (암호)" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-2 text-base focus:border-yellow-500 outline-none">
+            <div id="login-extras" class="flex justify-end mb-4">
+                <button onclick="openModal('forgotPasswordModal')" class="text-xs text-gray-400 hover:text-white">암호를 잊으셨소?</button>
+            </div>
+            <div id="signup-fields" class="hidden">
+                <input id="auth-password-confirm" type="password" placeholder="봉인 확인" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-4 text-base focus:border-yellow-500 outline-none">
+                <div class="flex items-center mb-6 px-1">
+                    <input type="checkbox" id="term-agree-chk" class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
+                    <label for="term-agree-chk" class="ml-2 text-xs text-gray-400">
+                        <span class="underline cursor-pointer" onclick="openLegalModal('terms')">이용약관</span> 및 
+                        <span class="underline cursor-pointer" onclick="openLegalModal('privacy')">개인정보처리방침</span> 동의
+                    </label>
+                </div>
+            </div>
+            <button id="auth-submit-btn" onclick="submitAuth()" class="w-full py-3.5 text-sm bg-white text-black rounded-xl font-bold hover:bg-gray-200 transition mb-4">입문</button>
+            <button onclick="closeModal('authModal')" class="w-full text-center text-xs text-gray-500 hover:text-white">닫기</button>
+        </div>
+    </div>
+
+    <!-- Menu Palette Modal -->
+    <div id="menuPaletteModal" class="hidden fixed inset-0 z-[70] flex flex-col animate-slide-up bg-black/95 backdrop-blur-xl">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-gray-800 bg-[#1C1C1E]">
+            <span class="text-lg font-bold text-white">전체 메뉴</span>
+            <button onclick="closeModal('menuPaletteModal')" class="w-8 h-8 flex items-center justify-center bg-gray-800 rounded-full text-gray-400">✕</button>
+        </div>
+        <div class="p-4 border-b border-gray-800 bg-black">
+            <input id="menu-search-input" type="text" class="w-full bg-[#1C1C1E] border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:border-yellow-500 focus:outline-none" placeholder="검색 (예: 시황, 공지, 유머)">
+        </div>
+        <div class="flex-grow overflow-y-auto">
+            <div class="p-4 space-y-6">
+                <!-- My Page Link in Palette -->
+                <button onclick="navigate('my-page'); closeModal('menuPaletteModal')" class="w-full bg-[#1C1C1E] p-4 rounded-xl border border-gray-800 flex items-center gap-3 hover:bg-gray-800 transition">
+                    <div class="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center text-xl">👤</div>
+                    <div class="text-left">
+                        <div class="font-bold text-white">나의 본거지</div>
+                        <div class="text-xs text-gray-400">프로필, 설정, 내 활동</div>
+                    </div>
+                </button>
+
+                <div>
+                    <div class="text-xs font-bold text-yellow-400 mb-3 uppercase tracking-wider">즐겨찾기</div>
+                    <div id="menu-favorites" class="grid grid-cols-4 gap-3"></div>
+                </div>
+                <div>
+                    <div class="text-xs font-bold text-yellow-400 mb-3 uppercase tracking-wider">최근 방문</div>
+                    <div id="menu-recents" class="grid grid-cols-4 gap-3"></div>
+                </div>
+                <div>
+                    <div class="text-xs font-bold text-yellow-400 mb-3 uppercase tracking-wider">전체 목록</div>
+                    <div id="menu-all" class="grid grid-cols-4 gap-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Modal -->
+    <div id="notificationModal" class="hidden fixed inset-0 bg-black/60 z-[60] flex justify-end">
+        <div class="bg-[#1C1C1E] w-full max-w-xs h-full shadow-2xl border-l border-gray-800 animate-slide-left flex flex-col">
+            <div class="p-4 border-b border-gray-800 flex justify-between items-center bg-[#1C1C1E]">
+                <h3 class="text-lg font-bold text-white">전갈</h3>
+                <button onclick="closeModal('notificationModal')" class="text-gray-400 hover:text-white">✕</button>
+            </div>
+            <div class="p-3 border-b border-gray-800 flex gap-2 overflow-x-auto no-scrollbar">
+                <button onclick="switchNotificationsFilter('all')" id="noti-filter-all" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700 whitespace-nowrap">전체</button>
+                <button onclick="switchNotificationsFilter('comment')" id="noti-filter-comment" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700 whitespace-nowrap">전서</button>
+                <button onclick="switchNotificationsFilter('like')" id="noti-filter-like" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700 whitespace-nowrap">명성</button>
+                <button onclick="switchNotificationsFilter('message')" id="noti-filter-message" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700 whitespace-nowrap">밀서</button>
+            </div>
+            <div id="notification-list" class="flex-grow overflow-y-auto p-2 space-y-2">
+                <div class="text-center text-gray-500 mt-10 text-sm">전갈을 불러오는 중...</div>
+            </div>
+            <div class="p-3 border-t border-gray-800">
+                <button onclick="markAllNotificationsRead()" class="w-full py-2 text-sm bg-gray-800 text-gray-300 rounded-lg hover:bg-gray-700">모두 확인</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message Modal -->
     <div id="messageModal" class="hidden fixed inset-0 z-[70] flex flex-col animate-slide-up bg-black/95 backdrop-blur-xl">
         <div class="flex items-center justify-between px-4 py-3 border-b border-gray-800 bg-[#1C1C1E]">
             <span class="text-lg font-bold text-white">밀서함</span>
@@ -651,7 +534,6 @@
         </div>
         <div class="flex-grow overflow-y-auto">
             <div id="message-list" class="p-4 space-y-3">
-                <!-- Messages will be injected here -->
                 <div class="text-center text-gray-500 mt-10">전갈을 불러오는 중이오...</div>
             </div>
         </div>
@@ -667,24 +549,7 @@
         </div>
     </div>
 
-    <!-- User Action Sheet -->
-    <div id="userActionSheet" class="hidden fixed inset-0 bg-black/80 z-[70] flex items-end">
-        <div class="bg-[#1C1C1E] w-full max-w-md mx-auto p-4 rounded-t-2xl border-t border-gray-800">
-            <div class="flex items-center gap-3 mb-4">
-                <img id="user-sheet-avatar" class="w-12 h-12 rounded-full border border-gray-700" src="" alt="avatar">
-                <h3 id="user-sheet-name" class="text-lg font-bold text-white"></h3>
-            </div>
-            <div class="flex flex-col gap-2 mb-4">
-                <button id="sheet-msg-btn" class="w-full py-3 text-sm bg-yellow-600 text-black rounded-lg font-bold">밀서 보내기</button>
-                <button id="sheet-profile-btn" class="w-full py-3 text-sm bg-gray-800 text-white rounded-lg font-bold">프로필 보기</button>
-                <button id="follow-btn" class="w-full py-3 text-sm bg-gray-800 text-white rounded-lg font-bold">팔로우</button>
-                <button id="block-btn" class="w-full py-3 text-sm bg-gray-800 text-white rounded-lg font-bold">차단</button>
-            </div>
-            <button onclick="closeModal('userActionSheet')" class="w-full py-3 text-sm bg-gray-900 text-gray-300 rounded-lg">닫기</button>
-        </div>
-    </div>
-
-    <!-- Profile View Modal -->
+    <!-- Other Modals (ProfileView, UserAction, Report, etc.) -->
     <div id="profileViewModal" class="hidden fixed inset-0 z-[70] flex flex-col animate-slide-up bg-black/95 backdrop-blur-xl">
         <div class="flex items-center justify-between px-4 py-3 border-b border-gray-800 bg-[#1C1C1E]">
             <span class="text-lg font-bold text-white">협객 프로필</span>
@@ -715,112 +580,41 @@
         </div>
     </div>
 
-    <!-- Detail Modal -->
-    <div id="postDetailModal" class="hidden fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-[#1C1C1E] w-full max-w-lg h-[85vh] flex flex-col rounded-3xl shadow-2xl overflow-hidden border border-gray-800">
-            <div class="p-4 border-b border-gray-800 flex justify-between items-start bg-[#1C1C1E]">
-                <div class="flex-grow pr-4">
-                    <h3 id="detail-title-modal" class="text-xl font-bold text-white mb-1 leading-snug"></h3>
-                    <div id="detail-meta-container-modal" class="flex items-center gap-1.5 text-sm text-gray-400">
-                        <span id="detail-author-modal"></span>
-                        <span>•</span>
-                        <span id="detail-date-modal" class="text-[11px]"></span>
-                    </div>
-                </div>
-                <button onclick="closeModal('postDetailModal')" class="text-gray-400 hover:text-white p-1 bg-gray-800 rounded-full">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                </button>
+    <div id="userActionSheet" class="hidden fixed inset-0 bg-black/80 z-[70] flex items-end">
+        <div class="bg-[#1C1C1E] w-full max-w-md mx-auto p-4 rounded-t-2xl border-t border-gray-800">
+            <div class="flex items-center gap-3 mb-4">
+                <img id="user-sheet-avatar" class="w-12 h-12 rounded-full border border-gray-700" src="" alt="avatar">
+                <h3 id="user-sheet-name" class="text-lg font-bold text-white"></h3>
             </div>
-            
-            <div class="flex-grow overflow-y-auto p-5 scroll-hidden bg-black">
-                <div id="detail-content-modal" class="post-content-style"></div>
-                
-                    <div class="flex items-center justify-between mt-6 pt-4 border-t border-gray-800">
-                    <div class="flex gap-3">
-                         <button onclick="toggleLike()" class="flex items-center gap-1 text-gray-400 hover:text-red-500 transition text-sm"><span class="text-lg">♥</span> <span id="detail-likes-modal" class="text-sm">0</span></button>
-                         <span class="flex items-center gap-1 text-gray-400 text-sm"><span class="text-lg">👁</span> <span id="detail-views-modal" class="text-sm">0</span></span>
-                    </div>
-                    <div class="flex gap-2">
-                        <button id="btn-share-link-modal" class="text-xs bg-gray-800 text-gray-300 px-3 py-1.5 rounded-full hover:bg-gray-700">공유</button>
-                        <!-- Message Button Injected dynamically if logged in -->
-                        <button id="btn-send-msg-modal" class="hidden text-xs bg-gray-800 text-gray-300 px-3 py-1.5 rounded-full hover:bg-gray-700">밀서 보내기</button>
-                        <button onclick="openReportModal('post', state.currentPostId)" class="text-xs text-gray-500 hover:text-red-400 px-2">🚨 관아 신고</button>
-                        <button id="edit-post-btn-modal" class="hidden text-xs text-blue-400 font-bold px-2">교정</button>
-                        <button id="delete-post-btn-modal" class="hidden text-xs text-red-500 font-bold px-2">파기</button>
-                    </div>
-                </div>
-                <div class="mt-2">
-                    <div id="detail-prev-next-modal" class="flex gap-2"></div>
-                </div>
-                <div class="mt-4 pt-2 border-t border-gray-800">
-                    <div id="comments-list-modal" class="mb-3 space-y-3"></div>
-                    <div class="relative">
-                        <textarea id="comment-input-modal" placeholder="전서(댓글)를 남기시오... (Ctrl+Enter 전송)" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)) addComment()" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white pr-12 focus:border-gray-500 focus:outline-none transition resize-y min-h-[44px]"></textarea>
-                        <button onclick="addComment()" class="absolute right-2 top-2 bg-gray-700 text-white p-2 rounded-full hover:bg-gray-600">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-                        </button>
-                    </div>
-                    <div class="text-[11px] text-gray-500 mt-1">Ctrl+Enter로 전송하시오</div>
-                </div>
-                <div class="mt-4 pt-3 border-t border-gray-800">
-                    <div class="flex items-center justify-between mb-2">
-                        <div class="text-[11px] text-gray-400">다른 비급</div>
-                        <label class="flex items-center gap-1 text-[11px] text-gray-400">
-                            <input id="detail-include-secret-toggle-modal" type="checkbox" class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
-                            객잔 포함
-                        </label>
-                    </div>
-                    <div id="related-posts-modal" class="space-y-1"></div>
-                </div>
+            <div class="flex flex-col gap-2 mb-4">
+                <button id="sheet-msg-btn" class="w-full py-3 text-sm bg-yellow-600 text-black rounded-lg font-bold">밀서 보내기</button>
+                <button id="sheet-profile-btn" class="w-full py-3 text-sm bg-gray-800 text-white rounded-lg font-bold">프로필 보기</button>
+                <button id="follow-btn" class="w-full py-3 text-sm bg-gray-800 text-white rounded-lg font-bold">팔로우</button>
+                <button id="block-btn" class="w-full py-3 text-sm bg-gray-800 text-white rounded-lg font-bold">차단</button>
             </div>
-
-        </div>
-    </div>
-    
-    <!-- Auth Modal -->
-    <div id="authModal" class="hidden fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-[#1C1C1E] w-full max-w-sm p-8 rounded-3xl shadow-2xl border border-gray-800">
-            <h3 class="text-2xl font-bold text-white mb-6 text-center">문파 입문</h3>
-            
-            <!-- Tab Headers -->
-            <div class="flex border-b border-gray-700 mb-6">
-                <button id="tab-login" onclick="switchAuthTab('login')" class="flex-1 pb-3 text-sm font-bold text-white border-b-2 border-white transition">입문(로그인)</button>
-                <button id="tab-signup" onclick="switchAuthTab('signup')" class="flex-1 pb-3 text-sm font-bold text-gray-500 border-b-2 border-transparent transition hover:text-gray-300">문파등록</button>
-            </div>
-
-            <!-- Common Inputs -->
-            <input id="auth-email" type="email" placeholder="서신 주소 (이메일)" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-3 text-base focus:border-yellow-500 outline-none">
-            <input id="auth-password" type="password" placeholder="비급 봉인 (암호)" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-2 text-base focus:border-yellow-500 outline-none">
-            
-            <div id="login-extras" class="flex justify-end mb-4">
-                <button onclick="openModal('forgotPasswordModal')" class="text-xs text-gray-400 hover:text-white">암호를 잊으셨소?</button>
-            </div>
-            
-            <!-- Signup Only Inputs -->
-            <div id="signup-fields" class="hidden">
-                <input id="auth-password-confirm" type="password" placeholder="봉인 확인" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-4 text-base focus:border-yellow-500 outline-none">
-                
-                <div class="flex items-center mb-6 px-1">
-                    <input type="checkbox" id="term-agree-chk" class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-yellow-500 focus:ring-0">
-                    <label for="term-agree-chk" class="ml-2 text-xs text-gray-400">
-                        <span class="underline cursor-pointer" onclick="openLegalModal('terms')">이용약관</span> 및 
-                        <span class="underline cursor-pointer" onclick="openLegalModal('privacy')">개인정보처리방침</span> 동의
-                    </label>
-                </div>
-            </div>
-
-            <!-- Action Button -->
-            <button id="auth-submit-btn" onclick="submitAuth()" class="w-full py-3.5 text-sm bg-white text-black rounded-xl font-bold hover:bg-gray-200 transition mb-4">입문</button>
-            
-            <button onclick="closeModal('authModal')" class="w-full text-center text-xs text-gray-500 hover:text-white">닫기</button>
+            <button onclick="closeModal('userActionSheet')" class="w-full py-3 text-sm bg-gray-900 text-gray-300 rounded-lg">닫기</button>
         </div>
     </div>
 
-    <!-- Logic -->
-    <script src="app.js"></script>
-    
-    <!-- Modals for Legal/Delete/YouTube omitted for brevity but logic remains in app.js if IDs match -->
-    <!-- Re-adding necessary modals to ensure no breakage -->
+    <div id="reportModal" class="hidden fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-[#1C1C1E] w-full max-w-sm p-6 rounded-3xl shadow-2xl border border-gray-800">
+            <h3 class="text-lg font-bold text-white mb-2">신고하기</h3>
+            <select id="report-reason" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-3 text-sm focus:border-red-500 outline-none">
+                <option value="spam">벽서 남발 (광고/도배)</option>
+                <option value="abuse">언사 불손 (욕설/비하)</option>
+                <option value="adult">풍기 문란 (음란/부적절)</option>
+                <option value="fraud">혹세무민 (사기/거짓)</option>
+                <option value="other">기타 사유</option>
+            </select>
+            <textarea id="report-details" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-4 text-sm focus:border-red-500 outline-none h-24 resize-none" placeholder="상세 사유"></textarea>
+            <div class="flex gap-2">
+                <button onclick="closeModal('reportModal')" class="flex-1 py-3 text-sm bg-gray-800 text-gray-300 rounded-xl font-bold">철회</button>
+                <button onclick="submitReport()" class="flex-1 py-3 text-sm bg-red-600 text-white rounded-xl font-bold">관아 고발</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirm Modal -->
     <div id="deleteConfirmModal" class="hidden fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-[#1C1C1E] w-full max-w-xs p-6 rounded-2xl border border-red-900 text-center">
             <h3 class="text-lg font-bold text-red-500 mb-2">삭제 확인</h3>
@@ -830,16 +624,6 @@
                 <button onclick="closeModal('deleteConfirmModal')" class="px-4 py-2 text-sm bg-gray-800 rounded-lg text-gray-300">철회</button>
                 <button onclick="deletePost(state.currentPostId)" class="px-4 py-2 text-sm bg-red-600 rounded-lg text-white font-bold">삭제</button>
             </div>
-        </div>
-    </div>
-    <!-- Forgot Password Modal -->
-    <div id="forgotPasswordModal" class="hidden fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-[#1C1C1E] w-full max-w-sm p-8 rounded-3xl shadow-2xl border border-gray-800">
-            <h3 class="text-xl font-bold text-white mb-4 text-center">암호 찾기</h3>
-            <p class="text-xs text-gray-400 mb-6 text-center">가입한 서신 주소(이메일)를 대면 암호 재설정 서신을 보내드리리다.</p>
-            <input id="reset-email" type="email" placeholder="서신 주소 (이메일)" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-4 text-base focus:border-yellow-500 outline-none">
-            <button onclick="sendPasswordReset()" class="w-full py-3.5 text-sm bg-yellow-600 text-white rounded-xl font-bold hover:bg-yellow-500 transition mb-3">전송하기</button>
-            <button onclick="closeModal('forgotPasswordModal')" class="w-full text-center text-xs text-gray-500 hover:text-white">철회</button>
         </div>
     </div>
 
@@ -855,37 +639,30 @@
         </div>
     </div>
 
-    <!-- Change Password Modal (For Recovery) -->
+    <!-- Forgot/Change Password & Email Verification Modals (Simplified for brevity but essential) -->
+    <div id="forgotPasswordModal" class="hidden fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-[#1C1C1E] w-full max-w-sm p-8 rounded-3xl shadow-2xl border border-gray-800">
+            <h3 class="text-xl font-bold text-white mb-4 text-center">암호 찾기</h3>
+            <input id="reset-email" type="email" placeholder="서신 주소 (이메일)" class="w-full bg-black border border-gray-700 text-white p-4 rounded-xl mb-4 text-base focus:border-yellow-500 outline-none">
+            <button onclick="sendPasswordReset()" class="w-full py-3.5 text-sm bg-yellow-600 text-white rounded-xl font-bold hover:bg-yellow-500 transition mb-3">전송하기</button>
+            <button onclick="closeModal('forgotPasswordModal')" class="w-full text-center text-xs text-gray-500 hover:text-white">철회</button>
+        </div>
+    </div>
     <div id="changePasswordModal" class="hidden fixed inset-0 bg-black/60 z-[80] flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-[#1C1C1E] w-full max-w-sm p-6 rounded-3xl shadow-2xl border border-gray-800">
             <h3 class="text-lg font-bold text-white mb-2">암호 변경</h3>
-            <p class="text-xs text-gray-400 mb-4">새로운 암호를 대시오.</p>
             <input type="password" id="new-password" placeholder="새 암호 (6자 이상)" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-3 text-sm focus:border-green-500 outline-none">
             <input type="password" id="confirm-new-password" placeholder="봉인 확인" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-4 text-sm focus:border-green-500 outline-none">
-            <button onclick="submitChangePassword()" class="w-full py-3 text-sm bg-green-600 text-white rounded-xl font-bold hover:bg-green-500 transition shadow-lg shadow-green-900/20">암호 변경</button>
+            <button onclick="submitChangePassword()" class="w-full py-3 text-sm bg-green-600 text-white rounded-xl font-bold hover:bg-green-500 transition">암호 변경</button>
         </div>
     </div>
-
-    <!-- Email Verification Modal -->
     <div id="emailVerificationModal" class="hidden fixed inset-0 bg-black/80 z-[90] flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-[#1C1C1E] w-full max-w-sm p-8 rounded-3xl shadow-2xl border border-yellow-600 text-center">
-            <div class="w-16 h-16 bg-yellow-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-            </div>
             <h3 class="text-xl font-bold text-white mb-2">서신(이메일) 확인</h3>
-            <p class="text-sm text-gray-300 mb-6 leading-relaxed">
-                가입하신 서신 주소로<br>
-                <span class="text-yellow-500 font-bold">입문 허가증</span>이 발송되었소.<br><br>
-                서신을 확인하여 허가증을 제시(클릭)하면<br>
-                입문 절차가 완료되오.
-            </p>
-            <button onclick="closeModal('emailVerificationModal')" class="w-full py-3.5 text-sm bg-yellow-600 text-white rounded-xl font-bold hover:bg-yellow-500 transition shadow-lg shadow-yellow-900/20">확인했소</button>
+            <p class="text-sm text-gray-300 mb-6 leading-relaxed">입문 허가증이 발송되었소.</p>
+            <button onclick="closeModal('emailVerificationModal')" class="w-full py-3.5 text-sm bg-yellow-600 text-white rounded-xl font-bold hover:bg-yellow-500 transition">확인했소</button>
         </div>
     </div>
-
-    <!-- Legal Modal -->
     <div id="legalModal" class="hidden fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-[#1C1C1E] w-full max-w-lg h-[80vh] flex flex-col rounded-2xl border border-gray-800">
             <div class="p-4 border-b border-gray-800 flex justify-between items-center">
@@ -895,55 +672,6 @@
             <div id="legal-content" class="flex-grow overflow-y-auto p-6 text-sm text-gray-300 leading-relaxed whitespace-pre-wrap"></div>
         </div>
     </div>
-
-    <!-- Report Modal -->
-    <div id="reportModal" class="hidden fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-[#1C1C1E] w-full max-w-sm p-6 rounded-3xl shadow-2xl border border-gray-800">
-            <h3 class="text-lg font-bold text-white mb-2">신고하기</h3>
-            <p class="text-xs text-gray-400 mb-4">건전한 강호를 위해 협조 부탁하오.</p>
-            
-            <select id="report-reason" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-3 text-sm focus:border-red-500 outline-none">
-                <option value="spam">벽서 남발 (광고/도배)</option>
-                <option value="abuse">언사 불손 (욕설/비하)</option>
-                <option value="adult">풍기 문란 (음란/부적절)</option>
-                <option value="fraud">혹세무민 (사기/거짓)</option>
-                <option value="other">기타 사유</option>
-            </select>
-            
-            <textarea id="report-details" class="w-full bg-black border border-gray-700 text-white p-3 rounded-xl mb-4 text-sm focus:border-red-500 outline-none h-24 resize-none" placeholder="상세 사유를 적으시오 (선택사항)"></textarea>
-            
-            <div class="flex gap-2">
-                <button onclick="closeModal('reportModal')" class="flex-1 py-3 text-sm bg-gray-800 text-gray-300 rounded-xl font-bold">철회</button>
-                <button onclick="submitReport()" class="flex-1 py-3 text-sm bg-red-600 text-white rounded-xl font-bold">관아 고발</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Notification Modal -->
-    <div id="notificationModal" class="hidden fixed inset-0 bg-black/60 z-[60] flex justify-end">
-        <div class="bg-[#1C1C1E] w-full max-w-xs h-full shadow-2xl border-l border-gray-800 animate-slide-left flex flex-col">
-            <div class="p-4 border-b border-gray-800 flex justify-between items-center bg-[#1C1C1E]">
-                <h3 class="text-lg font-bold text-white">전갈</h3>
-                <button onclick="closeModal('notificationModal')" class="text-gray-400 hover:text-white">✕</button>
-            </div>
-            <div class="p-3 border-b border-gray-800 flex gap-2">
-                <button onclick="switchNotificationsFilter('all')" id="noti-filter-all" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">전체</button>
-                <button onclick="switchNotificationsFilter('comment')" id="noti-filter-comment" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">전서</button>
-                <button onclick="switchNotificationsFilter('like')" id="noti-filter-like" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">명성</button>
-                <button onclick="switchNotificationsFilter('message')" id="noti-filter-message" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">밀서</button>
-                <button onclick="switchNotificationsFilter('purchase')" id="noti-filter-purchase" class="px-3 py-1.5 rounded-full text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700">구매</button>
-            </div>
-            <div id="notification-list" class="flex-grow overflow-y-auto p-2 space-y-2">
-                <!-- Notifications injected here -->
-                <div class="text-center text-gray-500 mt-10 text-sm">전갈을 불러오는 중...</div>
-            </div>
-            <div class="p-3 border-t border-gray-800">
-                <button onclick="markAllNotificationsRead()" class="w-full py-2 text-sm bg-gray-800 text-gray-300 rounded-lg hover:bg-gray-700">모두 확인</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Admin Modal -->
     <div id="adminModal" class="hidden fixed inset-0 bg-black/60 z-[80] flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-[#1C1C1E] w-full max-w-md h-[80vh] rounded-2xl border border-gray-800 flex flex-col">
             <div class="p-4 border-b border-gray-800 flex justify-between items-center">
@@ -958,48 +686,30 @@
             </div>
             <div class="flex-grow overflow-y-auto p-3 space-y-2">
                 <div id="admin-reports-area" class="space-y-2">
-                    <div class="flex items-center gap-2 mb-2">
-                        <select id="reports-filter" class="bg-black border border-gray-700 text-white text-xs rounded px-2 py-1">
-                            <option value="all">전체</option>
-                            <option value="pending">미처리</option>
-                            <option value="resolved">처리</option>
-                            <option value="dismissed">기각</option>
-                        </select>
-                        <button onclick="loadAdminReports()" class="text-xs px-2 py-1 bg-gray-800 text-gray-300 rounded">새로고침</button>
-                    </div>
                     <div id="admin-reports-list" class="space-y-2"></div>
                 </div>
                 <div id="admin-users-area" class="hidden space-y-2">
                     <div class="flex items-center gap-2 mb-2">
-                        <input id="admin-user-q" type="text" placeholder="문도 검색(별칭)" class="flex-1 bg-black border border-gray-700 text-white text-xs rounded px-2 py-1">
+                        <input id="admin-user-q" type="text" placeholder="문도 검색" class="flex-1 bg-black border border-gray-700 text-white text-xs rounded px-2 py-1">
                         <button onclick="loadAdminUsers()" class="text-xs px-2 py-1 bg-gray-800 text-gray-300 rounded">검색</button>
                     </div>
                     <div id="admin-users-list" class="space-y-2"></div>
                 </div>
                 <div id="admin-broadcast-area" class="hidden space-y-2">
-                    <textarea id="broadcast-content" class="w-full bg-black border border-gray-700 text-white text-sm rounded p-2 h-24" placeholder="전 강호에 알릴 관방 공지를 적으시오"></textarea>
-                    <button onclick="sendBroadcast()" class="w-full py-2 text-sm bg-yellow-600 text-black rounded-xl font-bold hover:bg-yellow-500">공지 발송</button>
-                    <div class="text-[11px] text-gray-500">공지 발송은 모든 문도에게 전갈로 전해지오.</div>
+                    <textarea id="broadcast-content" class="w-full bg-black border border-gray-700 text-white text-sm rounded p-2 h-24" placeholder="공지 내용"></textarea>
+                    <button onclick="sendBroadcast()" class="w-full py-2 text-sm bg-yellow-600 text-black rounded-xl font-bold">공지 발송</button>
                 </div>
                 <div id="admin-deposits-area" class="hidden space-y-2">
                     <div class="flex items-center gap-2 mb-2">
-                        <select id="deposits-filter" class="bg-black border border-gray-700 text-white text-xs rounded px-2 py-1">
-                            <option value="requested">요청</option>
-                            <option value="pending">대기</option>
-                            <option value="confirmed">확인됨</option>
-                            <option value="cancelled">취소</option>
-                            <option value="all">전체</option>
-                        </select>
-                        <input id="deposits-search" type="text" placeholder="입금자/자료명" class="flex-1 bg-black border border-gray-700 text-white text-xs rounded px-2 py-1" oninput="loadAdminDeposits()">
                         <button onclick="loadAdminDeposits()" class="text-xs px-2 py-1 bg-gray-800 text-gray-300 rounded">새로고침</button>
-                        <button onclick="confirmSelectedDeposits()" class="text-xs px-2 py-1 bg-green-700 text-white rounded">선택 확인</button>
-                        <button onclick="cancelSelectedDeposits()" class="text-xs px-2 py-1 bg-gray-700 text-white rounded">선택 취소</button>
                     </div>
                     <div id="admin-deposits-list" class="space-y-2"></div>
                 </div>
             </div>
         </div>
     </div>
- 
+
+    <!-- App Logic -->
+    <script src="app.js"></script>
 </body>
 </html>

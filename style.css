@@ -268,6 +268,27 @@ blockquote {
     pointer-events: none;
     z-index: 0;
 }
+
+/* Elle-like Clean Card Utilities */
+.card-elegant {
+    background-color: #1C1C1E;
+    border: 1px solid #2a2a2a;
+    border-radius: 14px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+}
+.headline-tight {
+    letter-spacing: 0.2px;
+}
+.num-strong {
+    font-weight: 600;
+}
+.card-elegant .label-muted {
+    color: #9ca3af;
+}
+.card-elegant .meta-muted {
+    color: #6b7280;
+    font-size: 11px;
+}
 #my-profile-card > * { position: relative; z-index: 1; }
 #my-profile-card h3, 
 #my-profile-card p, 

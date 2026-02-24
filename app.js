@@ -405,7 +405,7 @@ async function loadNews() {
             const t = it.title || '';
             const l = it.link || '#';
             const s = it.source || '';
-            const d = it.published_at ? new Date(it.published_at).toLocaleString() : '';
+            const d = it.published_at ? new Date(it.published_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
             return `<div class="flex items-center justify-between text-xs border-b border-gray-700 last:border-b-0 py-1.5">
                 <a href="${l}" target="_blank" rel="noopener noreferrer" class="text-gray-200 hover:text-yellow-400 truncate min-w-0 flex-1">${t}</a>
                 <span class="ml-2 text-[10px] text-gray-500 whitespace-nowrap">${s}${d ? ' • ' + d : ''}</span>
@@ -422,7 +422,7 @@ function renderNewsItems(items, limit = 50) {
         const t = it.title || '';
         const l = it.link || '#';
         const s = it.source || '';
-        const d = it.published_at ? new Date(it.published_at).toLocaleString() : '';
+        const d = it.published_at ? new Date(it.published_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
         return `<div class="flex items-center justify-between text-xs border-b border-gray-700 last:border-b-0 py-1.5">
             <a href="${l}" target="_blank" rel="noopener noreferrer" class="text-gray-200 hover:text-yellow-400 truncate min-w-0 flex-1">${t}</a>
             <span class="ml-2 text-[10px] text-gray-500 whitespace-nowrap">${s}${d ? ' • ' + d : ''}</span>
@@ -469,15 +469,25 @@ async function loadMiniTrends() {
     const boxKosdaq = document.getElementById('mini-kosdaq');
     const headKospi = document.getElementById('mini-kospi-head');
     const headKosdaq = document.getElementById('mini-kosdaq-head');
+    const infoKospi = document.getElementById('mini-kospi-info');
+    const infoKosdaq = document.getElementById('mini-kosdaq-info');
     if (!boxKospi || !boxKosdaq) return;
-    const render = (inv, info) => {
+    const render = (inv, info, idxId) => {
         const f = (n)=> (typeof n === 'number' && isFinite(n)) ? n.toLocaleString('ko-KR') : '-';
         const c = (n)=> (typeof n === 'number' && n > 0 ? 'text-red-400' : 'text-blue-400');
+        const chartHtml = `
+            <div class="w-full h-24 bg-gray-800 rounded overflow-hidden relative">
+                <canvas id="mini-${idxId}-chart" class="w-full h-24"></canvas>
+            </div>
+            <div id="mini-${idxId}-dates" class="flex justify-between text-[10px] text-gray-400 mt-1 px-1"></div>`;
         return `
-            <div class="grid grid-cols-3 gap-1">
-                <div class="text-center"><div class="text-[10px] text-gray-500">개인</div><div class="${c(inv.individual)} whitespace-nowrap">${f(inv.individual)}</div></div>
-                <div class="text-center"><div class="text-[10px] text-gray-500">외국인</div><div class="${c(inv.foreign)} whitespace-nowrap">${f(inv.foreign)}</div></div>
-                <div class="text-center"><div class="text-[10px] text-gray-500">기관</div><div class="${c(inv.institution)} whitespace-nowrap">${f(inv.institution)}</div></div>
+            <div class="grid grid-cols-3 gap-2">
+                <div class="text-center"><div class="text-[10px] label-muted">개인</div><div class="${c(inv.individual)} whitespace-nowrap num-strong">${f(inv.individual)}</div></div>
+                <div class="text-center"><div class="text-[10px] label-muted">외국인</div><div class="${c(inv.foreign)} whitespace-nowrap num-strong">${f(inv.foreign)}</div></div>
+                <div class="text-center"><div class="text-[10px] label-muted">기관</div><div class="${c(inv.institution)} whitespace-nowrap num-strong">${f(inv.institution)}</div></div>
+            </div>
+            <div class="mt-2">
+                ${chartHtml}
             </div>
         `;
     };
@@ -487,19 +497,197 @@ async function loadMiniTrends() {
         const res = await fetch(url, { mode: 'cors', headers });
         if (!res.ok) throw new Error('network');
         const j = await res.json();
-        return { inv: j.investors || {}, info: { point: j.point, change_percent: j.change_percent } };
+        return { inv: j.investors || {}, info: { point: j.point, change_percent: j.change_percent, open: j.open, high: j.high, low: j.low, chartUrl: j.chartUrl }, series: Array.isArray(j.series) ? j.series : [] };
+    };
+    const fetchOhlcViaProxy = async (index) => {
+        const url = `https://r.jina.ai/http://finance.naver.com/sise/sise_index.naver?code=${index}`;
+        const res = await fetch(url, { mode: 'cors' });
+        if (!res.ok) throw new Error('proxy');
+        const text = await res.text();
+        const compact = text.replace(/\s+/g, '');
+        const packed = compact.match(/시([\d,\.]+)고([\d,\.]+)저([\d,\.]+)종([\d,\.]+)/);
+        if (packed) {
+            return { open: packed[1], high: packed[2], low: packed[3], close: packed[4] };
+        }
+        const pickAny = (labels) => {
+            let last = null;
+            for (const label of labels) {
+                const m = text.match(new RegExp(`${label}\\s*([\\d,\\.]+)`));
+                if (m) {
+                    last = m[1];
+                    break;
+                }
+            }
+            return last;
+        };
+        const open = pickAny(['시가', '시']);
+        const high = pickAny(['고가', '고']);
+        const low = pickAny(['저가', '저']);
+        const close = pickAny(['종가', '종']);
+        return { open, high, low, close };
+    };
+    const fetchDailyCandlesViaProxy = async (index) => {
+        const url = `https://r.jina.ai/http://finance.naver.com/sise/sise_index_day.naver?code=${index}`;
+        const res = await fetch(url, { mode: 'cors' });
+        if (!res.ok) throw new Error('proxy');
+        const text = await res.text();
+        const rows = [];
+        const re = /(\d{4}\.\d{2}\.\d{2})\s+([\d,]+(?:\.\d+)?)/g;
+        let m;
+        while ((m = re.exec(text)) !== null) {
+            const dateStr = m[1];
+            const closeStr = m[2];
+            const close = parseFloat(String(closeStr).replace(/,/g, ''));
+            if (!Number.isNaN(close)) rows.push({ dateStr, close });
+        }
+        if (!rows.length) return [];
+        const parsed = rows.map(r => {
+            const [y, mo, d] = r.dateStr.split('.').map(n => parseInt(n, 10));
+            const dt = new Date(y, (mo || 1) - 1, d || 1);
+            return { t: Math.floor(dt.getTime() / 1000), close: r.close };
+        }).filter(r => r.t);
+        const ordered = parsed.slice().sort((a, b) => a.t - b.t).slice(-12);
+        const candles = [];
+        for (let i = 0; i < ordered.length; i++) {
+            const prevClose = i > 0 ? ordered[i - 1].close : ordered[i].close;
+            const close = ordered[i].close;
+            const open = prevClose;
+            const hiBase = Math.max(open, close);
+            const loBase = Math.min(open, close);
+            const range = Math.max(0.5, hiBase * 0.002);
+            const high = hiBase + range;
+            const low = loBase - range;
+            candles.push({ t: ordered[i].t, o: open, h: high, l: low, c: close });
+        }
+        return candles;
+    };
+    const fillOhlc = async (r, index) => {
+        if (r.info.open && r.info.high && r.info.low && r.info.point) return;
+        try {
+            const ohlc = await fetchOhlcViaProxy(index);
+            if (!r.info.open && ohlc.open) r.info.open = ohlc.open;
+            if (!r.info.high && ohlc.high) r.info.high = ohlc.high;
+            if (!r.info.low && ohlc.low) r.info.low = ohlc.low;
+            if (!r.info.point && ohlc.close) r.info.point = ohlc.close;
+        } catch {}
     };
     const pc = (p)=> String(p||'').startsWith('-') ? 'text-blue-400' : 'text-red-400';
     try {
         boxKospi.innerHTML = '불러오는 중...';
         boxKosdaq.innerHTML = '불러오는 중...';
         const [r1, r2] = await Promise.all([fetchOne('KOSPI'), fetchOne('KOSDAQ')]);
-        const s1 = String(r1.info.change_percent || '').startsWith('-') ? { t: '하락', c: 'text-blue-400 border-blue-600' } : { t: '상승', c: 'text-red-400 border-red-600' };
-        const s2 = String(r2.info.change_percent || '').startsWith('-') ? { t: '하락', c: 'text-blue-400 border-blue-600' } : { t: '상승', c: 'text-red-400 border-red-600' };
-        if (headKospi) headKospi.innerHTML = `<span class="whitespace-nowrap">KOSPI</span><span class="text-right whitespace-nowrap"><span class="text-white font-bold mr-1">${r1.info.point || '-'}</span><span class="${pc(r1.info.change_percent)} mr-1">${r1.info.change_percent || '-'}</span><span class="text-[10px] px-1 py-0.5 rounded-full border ${s1.c}">${s1.t}</span></span>`;
-        if (headKosdaq) headKosdaq.innerHTML = `<span class="whitespace-nowrap">KOSDAQ</span><span class="text-right whitespace-nowrap"><span class="text-white font-bold mr-1">${r2.info.point || '-'}</span><span class="${pc(r2.info.change_percent)} mr-1">${r2.info.change_percent || '-'}</span><span class="text-[10px] px-1 py-0.5 rounded-full border ${s2.c}">${s2.t}</span></span>`;
-        boxKospi.innerHTML = render(r1.inv, r1.info);
-        boxKosdaq.innerHTML = render(r2.inv, r2.info);
+        await Promise.all([fillOhlc(r1, 'KOSPI'), fillOhlc(r2, 'KOSDAQ')]);
+        const [c1Series, c2Series] = await Promise.all([
+            fetchDailyCandlesViaProxy('KOSPI').catch(() => []),
+            fetchDailyCandlesViaProxy('KOSDAQ').catch(() => [])
+        ]);
+        if (headKospi) headKospi.textContent = 'KOSPI';
+        if (headKosdaq) headKosdaq.textContent = 'KOSDAQ';
+        if (infoKospi) infoKospi.innerHTML = `<span class="text-white font-bold mr-1">${r1.info.point || '-'}</span><span class="${pc(r1.info.change_percent)}">${r1.info.change_percent || '-'}</span>`;
+        if (infoKosdaq) infoKosdaq.innerHTML = `<span class="text-white font-bold mr-1">${r2.info.point || '-'}</span><span class="${pc(r2.info.change_percent)}">${r2.info.change_percent || '-'}</span>`;
+        boxKospi.innerHTML = render(r1.inv, r1.info, 'kospi');
+        boxKosdaq.innerHTML = render(r2.inv, r2.info, 'kosdaq');
+        const c1 = document.getElementById('mini-kospi-chart');
+        const c2 = document.getElementById('mini-kosdaq-chart');
+        const d1 = document.getElementById('mini-kospi-dates');
+        const d2 = document.getElementById('mini-kosdaq-dates');
+        const parseNum = (s)=> {
+            const n = parseFloat(String(s||'').replace(/,/g,''));
+            return Number.isNaN(n) ? null : n;
+        };
+        const fmtDate = (ts) => {
+            const d = new Date(ts * 1000);
+            if (isNaN(d.getTime())) return '';
+            return d.toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }).replace(/\./g,'').replace(/\s/g,'');
+        };
+        // KOSPI
+        if (c1) {
+            if (c1Series.length) {
+                drawMiniCandleSeries(c1, c1Series);
+                if (d1) {
+                    const first = c1Series[0]?.t;
+                    const mid = c1Series[Math.floor(c1Series.length / 2)]?.t;
+                    const last = c1Series[c1Series.length - 1]?.t;
+                    d1.innerHTML = `<span>${fmtDate(first)}</span><span>${fmtDate(mid)}</span><span>${fmtDate(last)}</span>`;
+                }
+            } else {
+                const o = parseNum(r1.info.open);
+                const h = parseNum(r1.info.high);
+                const l = parseNum(r1.info.low);
+                const cl = parseNum(r1.info.point);
+            let o2 = o;
+            let h2 = h;
+            let l2 = l;
+            let cl2 = cl;
+            if ((o2 == null || cl2 == null) && r1.info.point != null) {
+                const cur = parseNum(r1.info.point);
+                const pstr = String(r1.info.change_percent || '');
+                const sign = pstr.startsWith('-') ? -1 : +1;
+                const pct = parseFloat(pstr.replace(/[+%-]/g,'')) || 0;
+                const prev = (typeof cur === 'number') ? cur / (1 + sign * (pct/100)) : null;
+                if (o2 == null && typeof prev === 'number') o2 = prev;
+                if (cl2 == null && typeof cur === 'number') cl2 = cur;
+            }
+                if (o2 != null && cl2 != null) {
+                    const hi = (h2 != null) ? h2 : Math.max(o2, cl2);
+                    const lo = (l2 != null) ? l2 : Math.min(o2, cl2);
+                    drawMiniCandle(c1, o2, hi, lo, cl2);
+                } else {
+                    let series1 = Array.isArray(r1.series) ? r1.series : [];
+                    if (!series1.length && cl2 != null && o2 != null) series1 = [o2, cl2];
+                    if (series1.length) {
+                        const base = series1[0];
+                        const deltas = series1.map(v => (typeof v === 'number') ? (v - base) : 0);
+                        drawSparkline(c1, deltas);
+                    }
+                }
+                if (d1) d1.innerHTML = '';
+            }
+        }
+        // KOSDAQ
+        if (c2) {
+            if (c2Series.length) {
+                drawMiniCandleSeries(c2, c2Series);
+                if (d2) {
+                    const first = c2Series[0]?.t;
+                    const mid = c2Series[Math.floor(c2Series.length / 2)]?.t;
+                    const last = c2Series[c2Series.length - 1]?.t;
+                    d2.innerHTML = `<span>${fmtDate(first)}</span><span>${fmtDate(mid)}</span><span>${fmtDate(last)}</span>`;
+                }
+            } else {
+                const o = parseNum(r2.info.open);
+                const h = parseNum(r2.info.high);
+                const l = parseNum(r2.info.low);
+                const cl = parseNum(r2.info.point);
+            let o2 = o;
+            let h2 = h;
+            let l2 = l;
+            let cl2 = cl;
+            if ((o2 == null || cl2 == null) && r2.info.point != null) {
+                const cur = parseNum(r2.info.point);
+                const pstr = String(r2.info.change_percent || '');
+                const sign = pstr.startsWith('-') ? -1 : +1;
+                const pct = parseFloat(pstr.replace(/[+%-]/g,'')) || 0;
+                const prev = (typeof cur === 'number') ? cur / (1 + sign * (pct/100)) : null;
+                if (o2 == null && typeof prev === 'number') o2 = prev;
+                if (cl2 == null && typeof cur === 'number') cl2 = cur;
+            }
+                if (o2 != null && cl2 != null) {
+                    const hi = (h2 != null) ? h2 : Math.max(o2, cl2);
+                    const lo = (l2 != null) ? l2 : Math.min(o2, cl2);
+                    drawMiniCandle(c2, o2, hi, lo, cl2);
+                } else {
+                    let series2 = Array.isArray(r2.series) ? r2.series : [];
+                    if (!series2.length && cl2 != null && o2 != null) series2 = [o2, cl2];
+                    if (series2.length) {
+                        const base = series2[0];
+                        const deltas = series2.map(v => (typeof v === 'number') ? (v - base) : 0);
+                        drawSparkline(c2, deltas);
+                    }
+                }
+                if (d2) d2.innerHTML = '';
+            }
+        }
         const upd = document.getElementById('mini-trends-updated');
         if (upd) {
             const d = new Date();
@@ -508,8 +696,10 @@ async function loadMiniTrends() {
             upd.innerText = `갱신: ${hh}:${mm}`;
         }
     } catch {
-        if (headKospi) headKospi.innerHTML = 'KOSPI - -';
-        if (headKosdaq) headKosdaq.innerHTML = 'KOSDAQ - -';
+        if (headKospi) headKospi.textContent = 'KOSPI';
+        if (headKosdaq) headKosdaq.textContent = 'KOSDAQ';
+        if (infoKospi) infoKospi.innerHTML = '-';
+        if (infoKosdaq) infoKosdaq.innerHTML = '-';
         boxKospi.innerHTML = '동향을 불러올 수 없소.';
         boxKosdaq.innerHTML = '동향을 불러올 수 없소.';
     }
@@ -694,6 +884,7 @@ async function updateAuthState(session) {
 
 function updateHeaderUI() {
     const authContainer = document.getElementById('auth-buttons');
+    if (!authContainer) return;
     if (state.user && state.profile) {
         authContainer.innerHTML = `<button onclick="logout()" class="text-xs bg-red-900/50 text-red-200 px-2 py-1 rounded hover:bg-red-900 transition whitespace-nowrap">하산</button>`;
     } else {
@@ -919,7 +1110,8 @@ async function savePost() {
 
         if (!state.isEditing) {
             const { data } = await client.from('stock_tags').select('name').eq('name', stockName);
-            if (data.length === 0) {
+            const rows = Array.isArray(data) ? data : [];
+            if (rows.length === 0) {
                 await client.from('stock_tags').insert({ name: stockName });
                 await fetchStockTags();
             }
@@ -1080,8 +1272,133 @@ function navigate(viewId, pushHistory = true) {
     if (viewId === 'secret-inn') renderPosts('posts-list-secret', 'secret');
     if (viewId === 'my-page') renderMyPage();
     if (viewId === 'materials-board') loadMaterialsBoard();
+    trackRecentMenu(viewId);
+    renderRecentMenuBar();
 }
 
+const MENU_ITEMS = [
+    { id: 'gangho-plaza', label: '강호광장', icon: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>' },
+    { id: 'stock-board', label: '종목비급', icon: '<line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>' },
+    { id: 'journal-board', label: '매매일지', icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line>' },
+    { id: 'news-view', label: '증권뉴스', icon: '<path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1m2 13a2 2 0 0 1-2-2V7m2 13a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path>' },
+    { id: 'secret-inn', label: '암천객잔', icon: '<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>' },
+    { id: 'free-board', label: '자유게시판', icon: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>' },
+    { id: 'materials-board', label: '강의자료', icon: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>' },
+    { id: 'profit-cert', label: '수익인증', icon: '<polyline points="20 6 9 17 4 12"></polyline>' },
+    { id: 'notice-board', label: '공지사항', icon: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path>' },
+    { id: 'welcome-board', label: '가입인사', icon: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle>' },
+    { id: 'market-today', label: '오늘의시황', icon: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>' },
+    { id: 'kiwoom-catch', label: '키움캐치', icon: '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>' },
+    { id: 'humor-board', label: '오늘의유머', icon: '<circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line>' },
+    { id: 'debate-board', label: '오늘의토론', icon: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>' },
+    { id: 'music-board', label: '음악이야기', icon: '<path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle>' },
+    { id: 'travel-board', label: '여행탐방', icon: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>' },
+    { id: 'event-board', label: '이벤트', icon: '<path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"></path><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"></path><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4h-4z"></path>' }
+];
+
+const MENU_ICONS = {};
+
+function renderMegaMenu() {
+    // Removed legacy menu
+}
+
+function trackRecentMenu(viewId) {
+    if (viewId === 'post-detail') return;
+    const key = 'recent_menus';
+    let list;
+    try { list = JSON.parse(localStorage.getItem(key) || '[]'); } catch { list = []; }
+    const valid = MENU_ITEMS.some(m => m.id === viewId);
+    if (!valid) return;
+    list = [viewId].concat(list.filter(id => id !== viewId));
+    list = list.slice(0, 8);
+    try { localStorage.setItem(key, JSON.stringify(list)); } catch {}
+}
+
+function renderRecentMenuBar() {
+    // Removed legacy menu
+}
+
+function getFavorites() {
+    try { return JSON.parse(localStorage.getItem('fav_menus') || '[]'); } catch { return []; }
+}
+function setFavorites(list) {
+    try { localStorage.setItem('fav_menus', JSON.stringify(list)); } catch {}
+}
+function toggleFavorite(id) {
+    let fav = getFavorites();
+    if (fav.includes(id)) fav = fav.filter(x => x !== id);
+    else fav = [id].concat(fav);
+    setFavorites(fav);
+    renderMenuPalette();
+}
+function createMenuChip(id, label) {
+    const item = MENU_ITEMS.find(m => m.id === id);
+    const iconSvg = item ? item.icon : '<circle cx="12" cy="12" r="10"></circle>';
+    
+    const btn = document.createElement('button');
+    btn.className = 'flex flex-col items-center justify-center p-3 bg-[#1C1C1E] rounded-xl border border-gray-800 hover:bg-gray-800 transition aspect-square relative group';
+    
+    const iconContainer = document.createElement('div');
+    iconContainer.className = 'w-8 h-8 flex items-center justify-center text-gray-300 group-hover:text-yellow-400 transition-colors mb-2';
+    iconContainer.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${iconSvg}</svg>`;
+    
+    const txt = document.createElement('span');
+    txt.className = 'text-[10px] text-gray-200 font-medium group-hover:text-yellow-400 text-center leading-tight';
+    txt.textContent = label;
+    
+    // Star (Favorite) button
+    const star = document.createElement('button');
+    star.className = 'absolute top-1 right-1 p-1 opacity-0 group-hover:opacity-100 transition-opacity';
+    const isFav = getFavorites().includes(id);
+    star.innerHTML = isFav 
+        ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" class="text-yellow-500"><path d="M12 .587l3.668 7.431 8.2 1.193-5.934 5.788 1.402 8.168L12 18.896l-7.336 4.271 1.402-8.168L.132 9.211l8.2-1.193z"></path></svg>'
+        : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="text-gray-600 hover:text-yellow-500" stroke-width="2"><path d="M12 .587l3.668 7.431 8.2 1.193-5.934 5.788 1.402 8.168L12 18.896l-7.336 4.271 1.402-8.168L.132 9.211l8.2-1.193z"></path></svg>';
+    if (isFav) star.classList.remove('opacity-0'); // Always show if favorite
+    
+    star.onclick = (e)=> { e.stopPropagation(); toggleFavorite(id); };
+    
+    btn.appendChild(iconContainer);
+    btn.appendChild(txt);
+    btn.appendChild(star);
+    btn.onclick = () => { navigate(id); closeModal('menuPaletteModal'); trackRecentMenu(id); };
+    return btn;
+}
+window.openMenuPalette = function() {
+    openModal('menuPaletteModal');
+    renderMenuPalette();
+    const input = document.getElementById('menu-search-input');
+    if (input) {
+        input.value = '';
+        input.oninput = () => renderMenuPalette();
+    }
+};
+function renderMenuPalette() {
+    const input = document.getElementById('menu-search-input');
+    const q = (input?.value || '').trim().toLowerCase();
+    const favWrap = document.getElementById('menu-favorites');
+    const recWrap = document.getElementById('menu-recents');
+    const allWrap = document.getElementById('menu-all');
+    if (!favWrap || !recWrap || !allWrap) return;
+    favWrap.innerHTML = '';
+    recWrap.innerHTML = '';
+    allWrap.innerHTML = '';
+    const fav = getFavorites();
+    const labelMap = Object.fromEntries(MENU_ITEMS.map(m => [m.id, m.label]));
+    fav.forEach(id => {
+        if (q && !(labelMap[id] || '').toLowerCase().includes(q)) return;
+        favWrap.appendChild(createMenuChip(id, labelMap[id] || id));
+    });
+    let recents;
+    try { recents = JSON.parse(localStorage.getItem('recent_menus') || '[]'); } catch { recents = []; }
+    recents.forEach(id => {
+        if (q && !(labelMap[id] || '').toLowerCase().includes(q)) return;
+        recWrap.appendChild(createMenuChip(id, labelMap[id] || id));
+    });
+    MENU_ITEMS.forEach(m => {
+        if (q && !m.label.toLowerCase().includes(q)) return;
+        allWrap.appendChild(createMenuChip(m.id, m.label));
+    });
+}
 async function loadWeeklyDigest() {
     const wrap = document.getElementById('weekly-digest');
     const listEl = document.getElementById('weekly-digest-list');
@@ -1115,15 +1432,15 @@ async function loadWeeklyDigest() {
             left.appendChild(av);
             left.appendChild(tt);
             const right = document.createElement('div');
-            right.className = 'flex items-center gap-3 text-gray-400 whitespace-nowrap flex-shrink-0';
+            right.className = 'flex items-center justify-between gap-1 text-gray-400 whitespace-nowrap flex-shrink-0 w-[64px]';
             right.innerHTML = `
-                <div class="flex items-center gap-1">
-                    <span class="text-[11px]">👁</span>
-                    <span class="w-8 text-right text-[11px]">${p.view_count || 0}</span>
+                <div class="flex items-center gap-[2px]">
+                    <span class="text-[9px]">👁</span>
+                    <span class="w-5 text-right text-[9px]">${p.view_count || 0}</span>
                 </div>
-                <div class="flex items-center gap-1">
-                    <span class="text-[11px]">❤️</span>
-                    <span class="w-8 text-right text-[11px]">${p.like_count || 0}</span>
+                <div class="flex items-center gap-[2px]">
+                    <span class="text-[9px]">❤️</span>
+                    <span class="w-5 text-right text-[9px]">${p.like_count || 0}</span>
                 </div>`;
             row.appendChild(left);
             row.appendChild(right);
@@ -1213,7 +1530,7 @@ async function loadSponsors() {
             .order('priority', { ascending: false })
             .order('created_at', { ascending: false })
             .limit(3);
-        const items = data || [];
+        const items = Array.isArray(data) ? data : [];
         listEl.innerHTML = '';
         if (!items.length) { wrap.classList.add('hidden'); return; }
         items.forEach(s => {
@@ -1246,6 +1563,7 @@ async function loadSponsors() {
         wrap.classList.remove('hidden');
     } catch {
         listEl.innerHTML = '';
+        if (wrap) wrap.classList.add('hidden');
     }
 }
 document.addEventListener('DOMContentLoaded', () => {
@@ -1564,7 +1882,7 @@ async function loadMyJournal() {
         const el = document.createElement('div');
         const signClass = j.profit_amount >= 0 ? 'text-red-400' : 'text-blue-400';
         const pct = (Math.round(j.profit_percent * 100) / 100).toFixed(2);
-        el.className = 'bg-[#1C1C1E] p-3 rounded-xl border border-gray-800';
+        el.className = 'card-elegant p-3';
         el.innerHTML = `<div class="flex justify-between items-center">
             <div class="text-sm text-white">₩${Number(j.base_capital).toLocaleString('ko-KR')}</div>
             <div class="text-xs text-gray-400">${j.entry_date}</div>
@@ -1621,7 +1939,7 @@ async function loadJournalFeed() {
         const pct = (Math.round(j.profit_percent * 100) / 100).toFixed(2);
         const author = j.profiles?.nickname || '익명';
         const avatar = j.profiles?.avatar_url;
-        el.className = 'bg-[#1C1C1E] p-3 rounded-xl border border-gray-800';
+        el.className = 'card-elegant p-3';
         el.innerHTML = `<div class="flex justify-between items-center">
             <div class="flex items-center gap-2">
                 ${avatar ? `<img src="${avatar}" class="w-5 h-5 rounded-full">` : `<span class="w-5 h-5 rounded-full bg-gray-700 flex items-center justify-center text-[10px]">👤</span>`}
@@ -1717,6 +2035,84 @@ function drawSparkline(canvas, values) {
     ctx.stroke();
 }
 
+function drawMiniCandle(canvas, open, high, low, close) {
+    if (!canvas) return;
+    const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+    const cssW = canvas.clientWidth || 120;
+    const cssH = canvas.clientHeight || 48;
+    canvas.width = cssW * dpr;
+    canvas.height = cssH * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    let min = Math.min(open, high, low, close);
+    let max = Math.max(open, high, low, close);
+    if (max === min) {
+        const pad = Math.max(0.5, Math.abs(max) * 0.002);
+        max += pad;
+        min -= pad;
+    }
+    const span = max - min || 1;
+    const padY = 4;
+    const y = (v)=> (cssH - padY) - ((v - min) / span) * (cssH - padY * 2);
+    const color = close >= open ? '#ef4444' : '#3b82f6';
+    const cx = Math.round(cssW / 2);
+    const bodyW = Math.max(6, Math.round(cssW * 0.18));
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(cx, y(high));
+    ctx.lineTo(cx, y(low));
+    ctx.stroke();
+    const top = Math.min(y(open), y(close));
+    const bot = Math.max(y(open), y(close));
+    const h = Math.max(4, bot - top);
+    ctx.fillStyle = color;
+    ctx.fillRect(cx - Math.round(bodyW/2), top, bodyW, h);
+    ctx.strokeRect(cx - Math.round(bodyW/2), top, bodyW, h);
+}
+function drawMiniCandleSeries(canvas, candles) {
+    if (!canvas) return;
+    const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+    const cssW = canvas.clientWidth || 240;
+    const cssH = canvas.clientHeight || 80;
+    canvas.width = cssW * dpr;
+    canvas.height = cssH * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    const values = candles.flatMap(c => [c.h, c.l]);
+    if (!values.length) return;
+    let min = Math.min(...values);
+    let max = Math.max(...values);
+    if (max === min) {
+        const pad = Math.max(0.5, Math.abs(max) * 0.002);
+        max += pad;
+        min -= pad;
+    }
+    const span = max - min || 1;
+    const padY = 4;
+    const y = (v)=> (cssH - padY) - ((v - min) / span) * (cssH - padY * 2);
+    const count = candles.length;
+    const slot = cssW / count;
+    const bodyW = Math.max(4, Math.min(10, Math.round(slot * 0.5)));
+    candles.forEach((c, i) => {
+        const cx = Math.round(i * slot + slot / 2);
+        const color = c.c >= c.o ? '#ef4444' : '#3b82f6';
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(cx, y(c.h));
+        ctx.lineTo(cx, y(c.l));
+        ctx.stroke();
+        const top = Math.min(y(c.o), y(c.c));
+        const bot = Math.max(y(c.o), y(c.c));
+        const h = Math.max(3, bot - top);
+        ctx.fillStyle = color;
+        ctx.fillRect(cx - Math.round(bodyW/2), top, bodyW, h);
+        ctx.strokeRect(cx - Math.round(bodyW/2), top, bodyW, h);
+    });
+}
 function renderMyJournalChart(entries) {
     const canvas = document.getElementById('my-journal-chart');
     if (!canvas) return;
@@ -1755,7 +2151,7 @@ function renderMonthlySummary(entries) {
     box.innerHTML = '';
     rows.forEach(r => {
         const el = document.createElement('div');
-        el.className = 'bg-[#141416] p-3 rounded-xl border border-gray-800';
+        el.className = 'card-elegant p-3';
         el.innerHTML = `<div class="flex justify-between items-center">
             <div class="text-xs text-gray-400">${r.key}</div>
             <div class="${r.signClass} text-sm font-bold">₩${Math.round(r.profit).toLocaleString('ko-KR')}</div>
@@ -2040,13 +2436,14 @@ async function loadMyPosts() {
         .eq('user_id', state.user.id)
         .order('created_at', { ascending: false });
 
-    if (error || !posts || posts.length === 0) {
+    const postRows = Array.isArray(posts) ? posts : [];
+    if (error || postRows.length === 0) {
         container.innerHTML = '<div class="text-center text-gray-500 py-10">집필한 비급이 없소.</div>';
         return;
     }
 
     container.innerHTML = '';
-    posts.forEach(post => {
+    postRows.forEach(post => {
         const el = createPostElement(post);
         container.appendChild(el);
     });
@@ -2061,25 +2458,26 @@ async function loadBookmarkedPosts() {
     // But easier: 1. Get liked post IDs. 2. Fetch posts.
     
     const { data: likes } = await client.from('post_likes').select('post_id').eq('user_id', state.user.id);
-    
-    if (!likes || likes.length === 0) {
+    const likeRows = Array.isArray(likes) ? likes : [];
+    if (likeRows.length === 0) {
         container.innerHTML = '<div class="text-center text-gray-500 py-10">마음에 둔 비급이 없소.</div>';
         return;
     }
 
-    const postIds = likes.map(l => l.post_id);
+    const postIds = likeRows.map(l => l.post_id);
     const { data: posts, error } = await client.from('posts')
         .select(`*, profiles:user_id (nickname, post_count, comment_count)`)
         .in('id', postIds)
         .order('created_at', { ascending: false });
 
-    if (error || !posts || posts.length === 0) {
+    const postRows = Array.isArray(posts) ? posts : [];
+    if (error || postRows.length === 0) {
         container.innerHTML = '<div class="text-center text-gray-500 py-10">마음에 둔 비급이 없소.</div>';
         return;
     }
 
     container.innerHTML = '';
-    posts.forEach(post => {
+    postRows.forEach(post => {
         const el = createPostElement(post);
         const btn = document.createElement('button');
         btn.className = 'mt-2 text-xs bg-gray-800 text-gray-300 px-3 py-1.5 rounded-full hover:bg-gray-700';
@@ -2121,12 +2519,13 @@ async function loadMyNotifications() {
         list.innerHTML = '<div class="text-center text-gray-500 py-10">전갈을 불러올 수 없소.</div>';
         return;
     }
-    if (!data || data.length === 0) {
+    const rows = Array.isArray(data) ? data : [];
+    if (rows.length === 0) {
         list.innerHTML = '<div class="text-center text-gray-500 py-10">전갈이 없소.</div>';
         return;
     }
     list.innerHTML = '';
-    data.forEach(noti => {
+    rows.forEach(noti => {
         const el = document.createElement('div');
         const t = noti.type || 'other';
         const icon = t === 'comment' ? '💬' : t === 'like' ? '❤️' : t === 'message' ? '✉️' : t === 'purchase' ? '💳' : '🔔';
@@ -2556,7 +2955,10 @@ function createPostElement(post) {
     postEl.innerHTML = `
         <div class="flex justify-between items-start mb-2">
             <h4 class="text-white font-semibold truncate text-base flex-1">${post.title}${badge}${secretBadge}</h4>
-            ${!isSecret ? `<span class="text-[10px] text-gray-500 ml-2 bg-gray-800 px-1.5 py-0.5 rounded flex items-center gap-1">👁 ${post.view_count || 0} ❤️ ${post.like_count || 0}</span>` : ''}
+            ${!isSecret ? `<span class="text-[10px] text-gray-500 ml-2 bg-gray-800 px-1.5 py-0.5 rounded flex items-center gap-2">
+                <span class="inline-flex items-center gap-[2px]"><span>👁</span><span>${post.view_count || 0}</span></span>
+                <span class="inline-flex items-center gap-[2px]"><span>❤️</span><span>${post.like_count || 0}</span></span>
+            </span>` : ''}
         </div>
         <div class="text-[11px] text-gray-300 mb-1 truncate">${getExcerpt(post.content || '', 90)}</div>
         <div class="text-xs text-gray-400 flex justify-between items-center">
@@ -3365,7 +3767,7 @@ async function renderRanking() {
         guildList.innerHTML = '';
         counts.slice(0, 10).forEach(({ name, count }, idx) => {
             const el = document.createElement('div');
-            el.className = 'p-3 rounded-xl border border-gray-800 bg-[#1C1C1E] flex items-center justify-between';
+            el.className = 'card-elegant p-3 flex items-center justify-between';
             el.innerHTML = `<div class="flex items-center gap-2"><span class="text-xs text-gray-500">${idx + 1}</span><span class="text-sm text-white font-bold">${name}</span></div><div class="text-xs text-yellow-400">비급 ${count}</div>`;
             el.onclick = () => { state.currentStockName = name; navigate('guild-detail'); };
             guildList.appendChild(el);
@@ -3385,7 +3787,7 @@ async function renderRanking() {
         guildMemberList.innerHTML = '';
         memCounts.slice(0, 10).forEach(({ name, count }, idx) => {
             const el = document.createElement('div');
-            el.className = 'p-3 rounded-xl border border-gray-800 bg-[#1C1C1E] flex items-center justify-between';
+            el.className = 'card-elegant p-3 flex items-center justify-between';
             el.innerHTML = `<div class="flex items-center gap-2"><span class="text-xs text-gray-500">${idx + 1}</span><span class="text-sm text-white font-bold">${name}</span></div><div class="text-xs text-yellow-400">가입자 ${count}</div>`;
             el.onclick = () => { state.currentStockName = name; navigate('guild-detail'); };
             guildMemberList.appendChild(el);
@@ -3401,7 +3803,7 @@ async function renderRanking() {
         bestList.innerHTML = '';
         (posts || []).forEach(post => {
             const el = document.createElement('div');
-            el.className = 'p-3 rounded-xl border border-gray-800 bg-[#1C1C1E] hover:bg-gray-800 transition cursor-pointer';
+            el.className = 'card-elegant p-3 cursor-pointer';
             const like = post.like_count || 0;
             const stock = post.type === 'stock' ? ` · ${post.stock_id}` : '';
             el.innerHTML = `<div class="flex justify-between items-center mb-1"><span class="text-sm text-white truncate">${post.title}${stock}</span><span class="text-xs text-yellow-400">♥ ${like}</span></div><div class="text-[11px] text-gray-500">${new Date(post.created_at).toLocaleDateString()}</div>`;
@@ -3441,7 +3843,7 @@ async function renderGuildDetail(name) {
         lb.innerHTML = '';
         (topPosts || []).forEach(post => {
             const el = document.createElement('div');
-            el.className = 'p-3 rounded-xl border border-gray-800 bg-[#1C1C1E] flex items-center justify-between';
+            el.className = 'card-elegant p-3 flex items-center justify-between';
             el.innerHTML = `<div class="text-sm text-white truncate">${post.title}</div><div class="text-xs text-yellow-400">♥ ${post.like_count || 0}</div>`;
             lb.appendChild(el);
         });
@@ -3992,7 +4394,7 @@ function setupRealtimeChat() {
 // ------------------------------------------------------------------
 
 async function fetchMessages() {
-    if (!state.user) return;
+    if (!state.user) return [];
     
     const { data, error } = await client.from('messages')
         .select(`*, profiles:sender_id (nickname)`)
@@ -4016,11 +4418,9 @@ async function checkUnreadMessages() {
 
     if (!error) {
         const badge = document.getElementById('msg-badge');
-        if (count > 0) {
-            badge.classList.remove('hidden');
-        } else {
-            badge.classList.add('hidden');
-        }
+        if (!badge) return;
+        if (count > 0) badge.classList.remove('hidden');
+        else badge.classList.add('hidden');
     }
 }
 
@@ -4320,12 +4720,18 @@ function init() {
             document.querySelectorAll('[id$="Modal"]').forEach(m => m.classList.add('hidden'));
             document.getElementById('userActionSheet').classList.add('hidden');
         }
+        if ((e.ctrlKey || e.metaKey) && String(e.key).toLowerCase() === 'k') {
+            e.preventDefault();
+            openMenuPalette();
+        }
     }
     
     attachRealtimeDiagnostics();
     setupGlobalRealtime();
     setupDraggableFab();
     setupEditorSelectionTracking();
+    renderMegaMenu();
+    renderRecentMenuBar();
 }
 window.applyAccessibilitySettings = function() {
     try {
