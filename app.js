@@ -475,7 +475,7 @@ async function loadMiniTrends() {
     const render = (inv, info, idxId) => {
         const f = (n)=> (typeof n === 'number' && isFinite(n)) ? n.toLocaleString('ko-KR') : '-';
         const c = (n)=> (typeof n === 'number' && n > 0 ? 'text-red-400' : 'text-blue-400');
-        const chartHtml = `
+        const chartHtml = idxId === 'kospi' ? '' : `
             <div class="w-full h-24 bg-gray-800 rounded overflow-hidden relative">
                 <canvas id="mini-${idxId}-chart" class="w-full h-24"></canvas>
             </div>
@@ -578,7 +578,7 @@ async function loadMiniTrends() {
         const [r1, r2] = await Promise.all([fetchOne('KOSPI'), fetchOne('KOSDAQ')]);
         await Promise.all([fillOhlc(r1, 'KOSPI'), fillOhlc(r2, 'KOSDAQ')]);
         const [c1Series, c2Series] = await Promise.all([
-            fetchDailyCandlesViaProxy('KOSPI').catch(() => []),
+            Promise.resolve([]),
             fetchDailyCandlesViaProxy('KOSDAQ').catch(() => [])
         ]);
         if (headKospi) headKospi.textContent = 'KOSPI';

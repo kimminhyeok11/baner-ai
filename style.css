@@ -297,3 +297,20 @@ blockquote {
 #my-profile-card #stat-likes {
     text-shadow: 0 1px 2px rgba(0,0,0,0.75);
 }
+@media (max-width: 640px) {
+    h2 { font-size: 1.35rem; }
+    h3 { font-size: 1.05rem; }
+    .card-elegant { padding: 0.9rem; border-radius: 16px; }
+    .card { padding: 0.4rem 0.2rem; }
+    .nav-btn { font-size: 0.85rem; }
+    button, input, select, textarea { font-size: 0.9rem; }
+    .gap-6 { gap: 1rem; }
+    .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem; }
+    .grid-cols-4 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .mobile-bottom-nav .nav-btn { min-height: 56px; }
+    .mobile-bottom-nav .nav-btn svg { width: 22px; height: 22px; }
+    .mobile-bottom-nav .nav-btn span { font-size: 11px; margin-top: 6px; letter-spacing: -0.2px; }
+    .mobile-bottom-nav .mobile-fab { width: 56px; height: 56px; }
+    .mobile-bottom-nav .mobile-fab svg { width: 22px; height: 22px; }
+    .mobile-bottom-nav .mobile-fab-btn { padding-bottom: 4px; }
+}

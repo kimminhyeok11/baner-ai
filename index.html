@@ -30,7 +30,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         /* Mobile Safe Area Fixes */
-        .pb-safe-nav { padding-bottom: calc(3.5rem + env(safe-area-inset-bottom)); }
+        .pb-safe-nav { padding-bottom: calc(4rem + env(safe-area-inset-bottom)); }
         .pt-safe-top { padding-top: env(safe-area-inset-top); }
         
         /* Hide Scrollbar but keep functionality */
@@ -120,15 +120,15 @@
                     <!-- Mini Trends Card -->
                     <div id="mini-trends" class="mb-4">
                         <div class="card-elegant p-4 rounded-2xl border border-gray-800 bg-[#1C1C1E]">
-                            <div class="grid grid-cols-2 gap-4">
-                                <div class="pr-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div class="pr-0 sm:pr-4 pb-3 sm:pb-0 border-b sm:border-b-0 border-gray-700">
                                     <div class="flex items-center justify-between mb-1">
                                         <div id="mini-kospi-head" class="text-xs font-bold text-gray-400">KOSPI</div>
                                         <div id="mini-kospi-info" class="text-xs font-mono text-gray-300">-</div>
                                     </div>
                                     <div id="mini-kospi" class="text-sm font-bold text-white">-</div>
                                 </div>
-                                <div class="pl-4 border-l border-gray-700">
+                                <div class="pl-0 sm:pl-4 sm:border-l border-gray-700">
                                     <div class="flex items-center justify-between mb-1">
                                         <div id="mini-kosdaq-head" class="text-xs font-bold text-gray-400">KOSDAQ</div>
                                         <div id="mini-kosdaq-info" class="text-xs font-mono text-gray-300">-</div>
@@ -366,7 +366,7 @@
     </div>
 
     <!-- Mobile Bottom Navigation -->
-    <nav class="md:hidden flex-none z-50 bg-[#1C1C1E]/95 backdrop-blur-md border-t border-gray-800 pb-safe-nav">
+    <nav class="mobile-bottom-nav md:hidden flex-none z-50 bg-[#1C1C1E]/95 backdrop-blur-md border-t border-gray-800 pb-safe-nav">
         <div class="grid grid-cols-5 h-16">
             <button onclick="navigate('gangho-plaza')" class="nav-btn flex flex-col items-center justify-center text-gray-500 hover:text-white active:scale-95 transition-transform" aria-selected="true" data-target="gangho-plaza">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
@@ -376,8 +376,8 @@
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
                 <span class="text-[10px] mt-1 font-medium">종목</span>
             </button>
-            <button onclick="tryOpenWriteModal(getCurrentViewType())" class="flex flex-col items-center justify-center -mt-5">
-                <div class="w-14 h-14 bg-yellow-500 rounded-full flex items-center justify-center shadow-lg shadow-yellow-500/20 text-black transform active:scale-90 transition-transform">
+            <button onclick="tryOpenWriteModal(getCurrentViewType())" class="mobile-fab-btn flex flex-col items-center justify-center -mt-6">
+                <div class="mobile-fab w-14 h-14 bg-yellow-500 rounded-full flex items-center justify-center shadow-lg shadow-yellow-500/20 text-black transform active:scale-90 transition-transform">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </div>
             </button>
