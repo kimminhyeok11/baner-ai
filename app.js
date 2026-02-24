@@ -704,6 +704,7 @@ async function loadMiniTrends() {
         boxKosdaq.innerHTML = '동향을 불러올 수 없소.';
     }
 }
+*/
 // ------------------------------------------------------------------
 // 3. 인증 (Auth)
 // ------------------------------------------------------------------
@@ -1213,14 +1214,33 @@ function navigate(viewId, pushHistory = true) {
     document.querySelectorAll('.app-view').forEach(el => el.classList.add('hidden'));
     document.getElementById(viewId).classList.remove('hidden');
 
-    document.querySelectorAll('.nav-btn').forEach(btn => {
+    // Update Mobile Header Title
+    const mobileHeaderTitle = document.getElementById('mobile-header-title');
+    if (mobileHeaderTitle) {
+        const item = MENU_ITEMS.find(m => m.id === viewId);
+        mobileHeaderTitle.innerText = item ? item.label : '千金門';
+    }
+
+    document.querySelectorAll('.nav-btn, .nav-item').forEach(btn => {
         btn.setAttribute('aria-selected', 'false');
+        btn.classList.remove('active'); // For mobile nav styling compatibility
+        // Desktop nav-item active style (optional if CSS uses aria-selected)
+        if (btn.classList.contains('nav-item')) {
+            btn.classList.remove('text-white', 'bg-gray-800');
+            btn.classList.add('text-gray-400');
+        }
     });
 
-    const activeBtn = document.querySelector(`button[onclick*="navigate('${viewId}')"]`);
-    if (activeBtn) {
-        activeBtn.setAttribute('aria-selected', 'true');
-    }
+    const activeBtns = document.querySelectorAll(`[data-target="${viewId}"]`);
+    activeBtns.forEach(btn => {
+        btn.setAttribute('aria-selected', 'true');
+        btn.classList.add('active'); // For mobile nav
+        // Desktop nav-item active style
+        if (btn.classList.contains('nav-item')) {
+            btn.classList.remove('text-gray-400');
+            btn.classList.add('text-white', 'bg-gray-800');
+        }
+    });
 
     if (pushHistory) {
         window.history.pushState({ viewId }, null, `#${viewId}`);
@@ -1254,10 +1274,10 @@ function navigate(viewId, pushHistory = true) {
 
     if (viewId === 'gangho-plaza') renderPosts('posts-list-public', 'public');
     if (viewId === 'gangho-plaza') loadNews();
-    if (viewId === 'gangho-plaza') {
-        loadMiniTrends();
-        miniTrendsInterval = setInterval(loadMiniTrends, 60_000);
-    }
+    // if (viewId === 'gangho-plaza') {
+    //    loadMiniTrends();
+    //    miniTrendsInterval = setInterval(loadMiniTrends, 60_000);
+    // }
     if (viewId === 'gangho-plaza') loadJournalFeed();
     if (viewId === 'gangho-plaza') loadWeeklyDigest();
     if (viewId === 'gangho-plaza') loadRookieSpotlight();
@@ -1907,6 +1927,60 @@ async function loadMyJournal() {
     state.myJournalEntries = data || [];
     loadJournalGoals();
 }
+
+window.saveJournalEntry = async function() {
+    if (!state.user) return showToast('입문 후 이용 가능하오.', 'error');
+
+    const stockName = document.getElementById('journal-stock-name').value.trim();
+    const buyPrice = parseFloat(document.getElementById('journal-buy-price').value) || 0;
+    const sellPrice = parseFloat(document.getElementById('journal-sell-price').value) || 0;
+    const quantity = parseInt(document.getElementById('journal-quantity').value) || 1;
+    const date = document.getElementById('journal-date').value;
+    const strategy = document.getElementById('journal-strategy').value.trim();
+    const isPublic = document.getElementById('journal-is-public').checked;
+
+    if (!stockName) return showToast('종목명을 입력하시오.', 'error');
+    if (!date) return showToast('날짜를 입력하시오.', 'error');
+
+    let profitAmount = 0;
+    let profitPercent = 0;
+    if (sellPrice > 0) {
+        profitAmount = (sellPrice - buyPrice) * quantity;
+        profitPercent = buyPrice > 0 ? ((sellPrice - buyPrice) / buyPrice) * 100 : 0;
+    }
+
+    const payload = {
+        user_id: state.user.id,
+        stock_name: stockName,
+        buy_price: buyPrice,
+        sell_price: sellPrice,
+        quantity: quantity,
+        entry_date: date,
+        strategy: strategy,
+        is_public: isPublic,
+        profit_amount: profitAmount,
+        profit_percent: profitPercent,
+        base_capital: buyPrice * quantity
+    };
+
+    const { error } = await client.from('journal_entries').insert(payload);
+    if (error) {
+        console.error('Journal Save Error:', error);
+        showToast('일지 기록에 차질이 생겼소.', 'error');
+    } else {
+        showToast('일지가 기록되었소.', 'success');
+        closeModal('newJournalModal');
+        // Clear fields
+        document.getElementById('journal-stock-name').value = '';
+        document.getElementById('journal-buy-price').value = '';
+        document.getElementById('journal-sell-price').value = '';
+        document.getElementById('journal-quantity').value = '';
+        document.getElementById('journal-strategy').value = '';
+        
+        loadMyJournal();
+        if (isPublic) loadJournalFeed();
+    }
+};
 
 window.toggleJournalPublic = async function(id, toPublic) {
     if (!state.user) return;
@@ -5085,14 +5159,40 @@ window.getCurrentViewType = function() {
     if (!document.getElementById('gangho-plaza').classList.contains('hidden')) return 'public';
     if (!document.getElementById('stock-board').classList.contains('hidden')) return 'stock';
     if (!document.getElementById('secret-inn').classList.contains('hidden')) return 'secret';
+    if (!document.getElementById('journal-board').classList.contains('hidden')) return 'journal';
+    if (!document.getElementById('free-board').classList.contains('hidden')) return 'free';
+    if (!document.getElementById('humor-board').classList.contains('hidden')) return 'humor';
+    if (!document.getElementById('debate-board').classList.contains('hidden')) return 'debate';
+    if (!document.getElementById('music-board').classList.contains('hidden')) return 'music';
+    if (!document.getElementById('travel-board').classList.contains('hidden')) return 'travel';
+    if (!document.getElementById('event-board').classList.contains('hidden')) return 'event';
+    if (!document.getElementById('welcome-board').classList.contains('hidden')) return 'welcome';
     return 'public';
 };
 
 window.tryOpenWriteModal = (type) => {
     try {
-        console.log('tryOpenWriteModal 호출됨:', type);
-        if (type !== 'secret' && !state.user) {
+        if (!state.user && type !== 'secret') {
             if(confirm('비급 기록은 입문한 협객만 가능하오. 입문하시겠소?')) openModal('authModal');
+            return;
+        }
+
+        if (type === 'journal') {
+            openModal('newJournalModal');
+            return;
+        }
+
+        if (['free', 'humor', 'debate', 'music', 'travel', 'event', 'welcome'].includes(type)) {
+            // For now, treat these as public posts but maybe we'll need a way to distinguish them in the DB
+            // Currently DB only has 'public', 'stock', 'secret'. 
+            // We will map them to 'public' and maybe prepend a tag in title or content if needed.
+            // But for simplicity, let's just open the public modal.
+            // Ideally, we should add a 'category' column to posts table.
+            // For now, let's just open the public modal.
+            resetPostStateAndUI();
+            document.getElementById('type-public').checked = true;
+            togglePostTypeFields('public');
+            openModal('newPostModal');
             return;
         }
         
