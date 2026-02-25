@@ -68,31 +68,7 @@ async function computeRecentCommentMeta(postIds, hours = 72) {
         return map;
     } catch {
         return {};
-    /*
-    // Mobile Drawer Setup
-    const drawer = document.getElementById('mobile-drawer');
-    const drawerOverlay = document.getElementById('mobile-drawer-overlay');
-    const drawerContent = document.getElementById('mobile-drawer-content');
-    
-    window.openMobileDrawer = function() {
-        if (!drawer) return;
-        drawer.classList.remove('hidden');
-        setTimeout(() => {
-            drawerOverlay.classList.remove('opacity-0');
-            drawerContent.classList.remove('-translate-x-full');
-        }, 10);
-    };
-    
-    window.closeMobileDrawer = function() {
-        if (!drawer) return;
-        drawerOverlay.classList.add('opacity-0');
-        drawerContent.classList.add('-translate-x-full');
-        setTimeout(() => {
-            drawer.classList.add('hidden');
-        }, 300);
-    };
-}
-*/
+    }
 }
 
 try {
@@ -374,6 +350,8 @@ function getNewsProxyUrl() {
     try {
         const saved = localStorage.getItem('news_proxy_url');
         if (saved && saved.trim()) return saved.trim();
+        // Fallback to vercel api if on vercel, otherwise use supabase
+        if (window.location.hostname.includes('vercel.app')) return '/api/news';
         return `${SUPABASE_URL}/functions/v1/news`;
     } catch {
         return `${SUPABASE_URL}/functions/v1/news`;
@@ -406,7 +384,13 @@ async function loadNews() {
         container.innerHTML = '<div class="text-[11px] text-gray-500">증권 뉴스 프록시를 설정하시오.</div>';
         return;
     }
-    container.innerHTML = '<div class="text-[11px] text-gray-500">뉴스를 불러오는 중...</div>';
+    container.innerHTML = Array.from({ length: 4 }).map(() => `
+        <div class="animate-pulse bg-[#1C1C1E] border border-gray-800 rounded-2xl p-4">
+            <div class="h-2 bg-gray-800 rounded w-1/4 mb-3"></div>
+            <div class="h-3 bg-gray-800 rounded w-full mb-2"></div>
+            <div class="h-3 bg-gray-800 rounded w-2/3"></div>
+        </div>
+    `).join('');
     try {
         const isSupabase = /supabase\.co\/functions\/v1\//i.test(proxy) || /functions\.supabase\.co\//i.test(proxy);
         const headers = {};
@@ -425,15 +409,21 @@ async function loadNews() {
             container.innerHTML = '<div class="text-[11px] text-gray-500">표시할 뉴스가 없소.</div>';
             return;
         }
-        container.innerHTML = items.slice(0, 10).map(it => {
+        container.innerHTML = items.slice(0, 6).map(it => {
             const t = it.title || '';
             const l = it.link || '#';
             const s = it.source || '';
-            const d = it.published_at ? new Date(it.published_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-            return `<div class="flex items-center justify-between text-xs border-b border-gray-700 last:border-b-0 py-1.5">
-                <a href="${l}" target="_blank" rel="noopener noreferrer" class="text-gray-200 hover:text-yellow-400 truncate min-w-0 flex-1">${t}</a>
-                <span class="ml-2 text-[10px] text-gray-500 whitespace-nowrap">${s}${d ? ' • ' + d : ''}</span>
-            </div>`;
+            const d = it.published_at ? new Date(it.published_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' }) : '';
+            return `
+                <a href="${l}" target="_blank" rel="noopener noreferrer" class="block group bg-[#1C1C1E] border border-gray-800 rounded-2xl p-4 hover:border-gray-600 transition-all">
+                    <div class="flex flex-col gap-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] font-bold text-yellow-500 uppercase tracking-tight">${s}</span>
+                            <span class="text-[10px] text-gray-500">${d}</span>
+                        </div>
+                        <h4 class="text-sm font-bold text-gray-200 group-hover:text-white line-clamp-2 leading-snug">${t}</h4>
+                    </div>
+                </a>`;
         }).join('');
     } catch {
         container.innerHTML = '<div class="text-[11px] text-gray-500">프록시 접근에 차질이 있소.</div>';
@@ -496,42 +486,39 @@ async function loadMiniTrends() {
     const renderSimple = (el, info) => {
         const isUp = (info.change_percent || '').includes('+');
         const colorClass = isUp ? 'text-red-500' : 'text-blue-500';
-        el.innerHTML = `<span class="text-white font-bold mr-2">${info.point}</span><span class="${colorClass} text-xs">${info.change_percent}</span>`;
+        const sign = isUp ? '▲' : '▼';
+        el.innerHTML = `
+            <span class="text-lg font-black text-white">${info.point}</span>
+            <span class="${colorClass} text-[10px] font-bold">${sign} ${info.change_percent}</span>
+        `;
     };
 
     const fetchSimple = async (index) => {
         try {
-            // Try proxy first for speed
-            const url = `https://r.jina.ai/http://finance.naver.com/sise/sise_index.naver?code=${index}`;
-            const res = await fetch(url, { mode: 'cors' });
-            if (!res.ok) throw new Error('proxy');
-            const text = await res.text();
-            
-            // Fast regex extraction
-            const compact = text.replace(/\s+/g, '');
-            const match = compact.match(/현재가([\d,]+(?:\.\d+)?)전일대비([▼▲])([\d,]+(?:\.\d+)?)등락률([+\-]?[\d\.]+)%/);
-            
-            if (match) {
-                const point = match[1];
-                const sign = match[2] === '▲' ? '+' : '-';
-                const change = match[3];
-                const pct = match[4];
-                return { point, change_percent: `${sign}${pct}%` };
-            }
-            
-            // Fallback to simpler regex if structure changed
-            const pointMatch = text.match(/현재가\s*([\d,]+\.\d+)/);
-            if(pointMatch) {
-                return { point: pointMatch[1], change_percent: '' }; // Minimal
-            }
-            throw new Error('parse error');
-        } catch (e) {
-            // Final fallback to Supabase Edge Function if proxy fails
+            // Prefer Supabase Edge Function for stability
             const url = `${SUPABASE_URL}/functions/v1/trends?index=${encodeURIComponent(index)}`;
             const headers = { Authorization: `Bearer ${SUPABASE_ANON_KEY}` };
             const res = await fetch(url, { mode: 'cors', headers });
+            if (!res.ok) throw new Error('edge function failed');
             const j = await res.json();
-            return { point: j.point, change_percent: j.change_percent };
+            if (j.point && j.change_percent) return { point: j.point, change_percent: j.change_percent };
+            throw new Error('missing data');
+        } catch (e) {
+            // Fallback to proxy-based regex parsing
+            try {
+                const url = `https://r.jina.ai/http://finance.naver.com/sise/sise_index.naver?code=${index}`;
+                const res = await fetch(url, { mode: 'cors' });
+                const text = await res.text();
+                const compact = text.replace(/\s+/g, '');
+                const match = compact.match(/현재가([\d,]+(?:\.\d+)?)전일대비([▼▲])([\d,]+(?:\.\d+)?)등락률([+\-]?[\d\.]+)%/);
+                if (match) {
+                    const point = match[1];
+                    const sign = match[2] === '▲' ? '+' : '-';
+                    const pct = match[4];
+                    return { point, change_percent: `${sign}${pct}%` };
+                }
+            } catch {}
+            return { point: '-', change_percent: '0.00%' };
         }
     };
 
@@ -544,148 +531,7 @@ async function loadMiniTrends() {
         boxKosdaq.innerText = '-';
     }
 }
-        try {
-            const ohlc = await fetchOhlcViaProxy(index);
-            if (!r.info.open && ohlc.open) r.info.open = ohlc.open;
-            if (!r.info.high && ohlc.high) r.info.high = ohlc.high;
-            if (!r.info.low && ohlc.low) r.info.low = ohlc.low;
-            if (!r.info.point && ohlc.close) r.info.point = ohlc.close;
-        } catch {}
-    };
-    const pc = (p)=> String(p||'').startsWith('-') ? 'text-blue-400' : 'text-red-400';
-    try {
-        boxKospi.innerHTML = '불러오는 중...';
-        boxKosdaq.innerHTML = '불러오는 중...';
-        const [r1, r2] = await Promise.all([fetchOne('KOSPI'), fetchOne('KOSDAQ')]);
-        await Promise.all([fillOhlc(r1, 'KOSPI'), fillOhlc(r2, 'KOSDAQ')]);
-        const [c1Series, c2Series] = await Promise.all([
-            Promise.resolve([]),
-            fetchDailyCandlesViaProxy('KOSDAQ').catch(() => [])
-        ]);
-        if (headKospi) headKospi.textContent = 'KOSPI';
-        if (headKosdaq) headKosdaq.textContent = 'KOSDAQ';
-        if (infoKospi) infoKospi.innerHTML = `<span class="text-white font-bold mr-1">${r1.info.point || '-'}</span><span class="${pc(r1.info.change_percent)}">${r1.info.change_percent || '-'}</span>`;
-        if (infoKosdaq) infoKosdaq.innerHTML = `<span class="text-white font-bold mr-1">${r2.info.point || '-'}</span><span class="${pc(r2.info.change_percent)}">${r2.info.change_percent || '-'}</span>`;
-        boxKospi.innerHTML = render(r1.inv, r1.info, 'kospi');
-        boxKosdaq.innerHTML = render(r2.inv, r2.info, 'kosdaq');
-        const c1 = document.getElementById('mini-kospi-chart');
-        const c2 = document.getElementById('mini-kosdaq-chart');
-        const d1 = document.getElementById('mini-kospi-dates');
-        const d2 = document.getElementById('mini-kosdaq-dates');
-        const parseNum = (s)=> {
-            const n = parseFloat(String(s||'').replace(/,/g,''));
-            return Number.isNaN(n) ? null : n;
-        };
-        const fmtDate = (ts) => {
-            const d = new Date(ts * 1000);
-            if (isNaN(d.getTime())) return '';
-            return d.toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }).replace(/\./g,'').replace(/\s/g,'');
-        };
-        // KOSPI
-        if (c1) {
-            if (c1Series.length) {
-                drawMiniCandleSeries(c1, c1Series);
-                if (d1) {
-                    const first = c1Series[0]?.t;
-                    const mid = c1Series[Math.floor(c1Series.length / 2)]?.t;
-                    const last = c1Series[c1Series.length - 1]?.t;
-                    d1.innerHTML = `<span>${fmtDate(first)}</span><span>${fmtDate(mid)}</span><span>${fmtDate(last)}</span>`;
-                }
-            } else {
-                const o = parseNum(r1.info.open);
-                const h = parseNum(r1.info.high);
-                const l = parseNum(r1.info.low);
-                const cl = parseNum(r1.info.point);
-            let o2 = o;
-            let h2 = h;
-            let l2 = l;
-            let cl2 = cl;
-            if ((o2 == null || cl2 == null) && r1.info.point != null) {
-                const cur = parseNum(r1.info.point);
-                const pstr = String(r1.info.change_percent || '');
-                const sign = pstr.startsWith('-') ? -1 : +1;
-                const pct = parseFloat(pstr.replace(/[+%-]/g,'')) || 0;
-                const prev = (typeof cur === 'number') ? cur / (1 + sign * (pct/100)) : null;
-                if (o2 == null && typeof prev === 'number') o2 = prev;
-                if (cl2 == null && typeof cur === 'number') cl2 = cur;
-            }
-                if (o2 != null && cl2 != null) {
-                    const hi = (h2 != null) ? h2 : Math.max(o2, cl2);
-                    const lo = (l2 != null) ? l2 : Math.min(o2, cl2);
-                    drawMiniCandle(c1, o2, hi, lo, cl2);
-                } else {
-                    let series1 = Array.isArray(r1.series) ? r1.series : [];
-                    if (!series1.length && cl2 != null && o2 != null) series1 = [o2, cl2];
-                    if (series1.length) {
-                        const base = series1[0];
-                        const deltas = series1.map(v => (typeof v === 'number') ? (v - base) : 0);
-                        drawSparkline(c1, deltas);
-                    }
-                }
-                if (d1) d1.innerHTML = '';
-            }
-        }
-        // KOSDAQ
-        if (c2) {
-            if (c2Series.length) {
-                drawMiniCandleSeries(c2, c2Series);
-                if (d2) {
-                    const first = c2Series[0]?.t;
-                    const mid = c2Series[Math.floor(c2Series.length / 2)]?.t;
-                    const last = c2Series[c2Series.length - 1]?.t;
-                    d2.innerHTML = `<span>${fmtDate(first)}</span><span>${fmtDate(mid)}</span><span>${fmtDate(last)}</span>`;
-                }
-            } else {
-                const o = parseNum(r2.info.open);
-                const h = parseNum(r2.info.high);
-                const l = parseNum(r2.info.low);
-                const cl = parseNum(r2.info.point);
-            let o2 = o;
-            let h2 = h;
-            let l2 = l;
-            let cl2 = cl;
-            if ((o2 == null || cl2 == null) && r2.info.point != null) {
-                const cur = parseNum(r2.info.point);
-                const pstr = String(r2.info.change_percent || '');
-                const sign = pstr.startsWith('-') ? -1 : +1;
-                const pct = parseFloat(pstr.replace(/[+%-]/g,'')) || 0;
-                const prev = (typeof cur === 'number') ? cur / (1 + sign * (pct/100)) : null;
-                if (o2 == null && typeof prev === 'number') o2 = prev;
-                if (cl2 == null && typeof cur === 'number') cl2 = cur;
-            }
-                if (o2 != null && cl2 != null) {
-                    const hi = (h2 != null) ? h2 : Math.max(o2, cl2);
-                    const lo = (l2 != null) ? l2 : Math.min(o2, cl2);
-                    drawMiniCandle(c2, o2, hi, lo, cl2);
-                } else {
-                    let series2 = Array.isArray(r2.series) ? r2.series : [];
-                    if (!series2.length && cl2 != null && o2 != null) series2 = [o2, cl2];
-                    if (series2.length) {
-                        const base = series2[0];
-                        const deltas = series2.map(v => (typeof v === 'number') ? (v - base) : 0);
-                        drawSparkline(c2, deltas);
-                    }
-                }
-                if (d2) d2.innerHTML = '';
-            }
-        }
-        const upd = document.getElementById('mini-trends-updated');
-        if (upd) {
-            const d = new Date();
-            const hh = String(d.getHours()).padStart(2,'0');
-            const mm = String(d.getMinutes()).padStart(2,'0');
-            upd.innerText = `갱신: ${hh}:${mm}`;
-        }
-    } catch {
-        if (headKospi) headKospi.textContent = 'KOSPI';
-        if (headKosdaq) headKosdaq.textContent = 'KOSDAQ';
-        if (infoKospi) infoKospi.innerHTML = '-';
-        if (infoKosdaq) infoKosdaq.innerHTML = '-';
-        boxKospi.innerHTML = '동향을 불러올 수 없소.';
-        boxKosdaq.innerHTML = '동향을 불러올 수 없소.';
-    }
-}
-*/
+
 // ------------------------------------------------------------------
 // 3. 인증 (Auth)
 // ------------------------------------------------------------------
@@ -865,17 +711,19 @@ async function updateAuthState(session) {
 }
 
 function updateHeaderUI() {
-    const authContainer = document.getElementById('auth-buttons');
-    if (!authContainer) return;
-    if (state.user && state.profile) {
-        authContainer.innerHTML = `<button onclick="logout()" class="text-xs bg-red-900/50 text-red-200 px-2 py-1 rounded hover:bg-red-900 transition whitespace-nowrap">하산</button>`;
-    } else {
-        authContainer.innerHTML = `
-            <button onclick="openModal('authModal')" class="text-xs bg-yellow-600 text-white px-3 py-1.5 rounded font-bold hover:bg-yellow-500 transition shadow-lg animate-pulse whitespace-nowrap">
-                <span class="hidden sm:inline">강호 </span>입문
-            </button>
-        `;
-    }
+    ['auth-buttons', 'auth-buttons-mob'].forEach(id => {
+        const container = document.getElementById(id);
+        if (!container) return;
+        if (state.user && state.profile) {
+            container.innerHTML = `<button onclick="logout()" class="text-xs bg-red-900/50 text-red-200 px-3 py-1.5 rounded-xl hover:bg-red-900 transition font-bold">하산</button>`;
+        } else {
+            container.innerHTML = `
+                <button onclick="openModal('authModal')" class="text-xs bg-yellow-600 text-black px-4 py-2 rounded-xl font-black hover:bg-yellow-500 transition shadow-lg">
+                    입문
+                </button>
+            `;
+        }
+    });
 }
 
 window.toggleHeaderMenu = function(force) {
@@ -1253,17 +1101,15 @@ function navigate(viewId, pushHistory = true) {
         miniTrendsInterval = null;
     }
 
-    if (viewId === 'gangho-plaza') renderPosts('posts-list-public', 'public');
-    if (viewId === 'gangho-plaza') loadNews();
-    // if (viewId === 'gangho-plaza') {
-    //    loadMiniTrends();
-    //    miniTrendsInterval = setInterval(loadMiniTrends, 60_000);
-    // }
-    if (viewId === 'gangho-plaza') loadJournalFeed();
-    if (viewId === 'gangho-plaza') loadWeeklyDigest();
-    if (viewId === 'gangho-plaza') loadRookieSpotlight();
-    if (viewId === 'gangho-plaza') loadSponsors();
-    if (viewId === 'gangho-plaza') loadMaterialsPreview();
+    if (viewId === 'gangho-plaza') {
+        renderPosts('posts-list-public', 'public');
+        loadNews();
+        loadMiniTrends();
+        miniTrendsInterval = setInterval(loadMiniTrends, 60_000);
+        loadJournalFeed();
+        loadWeeklyDigest();
+        loadRookieSpotlight();
+    }
     if (viewId === 'news-view') loadNewsView();
     if (viewId === 'journal-board') loadJournalBoard();
     if (viewId === 'stock-board') {
@@ -1276,6 +1122,7 @@ function navigate(viewId, pushHistory = true) {
     trackRecentMenu(viewId);
     renderRecentMenuBar();
 }
+window.navigate = navigate;
 
 const MENU_ITEMS = [
     { id: 'gangho-plaza', label: '강호광장', icon: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>' },
@@ -1994,21 +1841,17 @@ async function loadJournalFeed() {
         const pct = (Math.round(j.profit_percent * 100) / 100).toFixed(2);
         const author = j.profiles?.nickname || '익명';
         const avatar = j.profiles?.avatar_url;
-        el.className = 'card-elegant p-3';
-        el.innerHTML = `<div class="flex justify-between items-center">
-            <div class="flex items-center gap-2">
-                ${avatar ? `<img src="${avatar}" class="w-5 h-5 rounded-full">` : `<span class="w-5 h-5 rounded-full bg-gray-700 flex items-center justify-center text-[10px]">👤</span>`}
-                <div class="text-xs text-gray-400">${author}</div>
+        el.className = 'py-2 border-b border-gray-800 last:border-b-0';
+        el.innerHTML = `
+            <div class="flex items-center justify-between mb-1">
+                <div class="flex items-center gap-1.5 min-w-0">
+                    ${avatar ? `<img src="${avatar}" class="w-3.5 h-3.5 rounded-full">` : `<div class="w-3.5 h-3.5 rounded-full bg-gray-800 flex items-center justify-center text-[8px]">👤</div>`}
+                    <span class="text-gray-400 truncate text-[11px]">${author}</span>
+                </div>
+                <span class="${signClass} font-bold text-[11px]">${j.profit_amount >= 0 ? '+' : ''}${pct}%</span>
             </div>
-            <div class="text-[11px] text-gray-500">${j.entry_date}</div>
-        </div>
-        <div class="flex justify-between items-center mt-1">
-            <div class="${signClass} font-bold">₩${Number(j.profit_amount).toLocaleString('ko-KR')}</div>
-            <div class="${signClass} text-sm">${pct}%</div>
-        </div>
-        ${j.strategy ? `<div class="text-[11px] text-gray-400 mt-1">전략: ${j.strategy}</div>` : ''}
-        ${j.tags ? `<div class="text-[11px] text-gray-400">태그: ${j.tags}</div>` : ''}
-        ${j.note ? `<div class="text-xs text-gray-300 mt-2">${linkifyHtml(j.note)}</div>` : ''}`;
+            <div class="text-[10px] text-gray-500 line-clamp-1">${j.note || j.strategy || '매매 복기...'}</div>
+        `;
         box.appendChild(el);
     });
 }
@@ -3056,206 +2899,83 @@ function createPostElement(post) {
     `;
     return postEl;
 }
-    const authorBtn = postEl.querySelector('button.text-yellow-400');
-    if (authorBtn && post.user_id) {
-        authorBtn.onclick = (e) => { e.stopPropagation(); openUserSheet(post.user_id, author, avatar); };
-    }
-    const avatarImg = postEl.querySelector('img');
-    if (avatarImg && post.user_id) {
-        avatarImg.onclick = (e) => { e.stopPropagation(); openUserSheet(post.user_id, author, avatar); };
-        avatarImg.onerror = () => { avatarImg.classList.add('hidden'); };
-    }
-    return postEl;
-}
 
 async function loadRecommended() {
     const box = document.getElementById('recommended-feed');
     if (!box) return;
     box.innerHTML = '<div class="text-[11px] text-gray-500">추천을 계산하는 중...</div>';
+    
     const mode = state.recommendedMode || 'mix';
     const cacheKey = `${state.user ? state.user.id : 'anon'}:${mode}`;
     const cached = state.recommendedCache[cacheKey];
+    
     if (cached && (Date.now() - cached.ts) < 10 * 60 * 1000) {
-        const mutes = state.relationships.mutes;
-        const blocks = state.relationships.blocks;
-        const notis = state.notInterestedPostIds;
-        let filtered = cached.posts.filter(p => {
-            const uid = p.user_id;
-            const pid = p.id;
-            if (uid && (mutes.has(uid) || blocks.has(uid))) return false;
-            if (notis.has(pid)) return false;
-            return true;
-        });
-        if (!state.includeSecretInReco) filtered = filtered.filter(p => p.type !== 'secret');
-        if (mode === 'follow') {
-            const follows = state.relationships.follows;
-            filtered = filtered.filter(p => p.user_id && follows.has(p.user_id));
-        } else if (mode === 'new') {
-            filtered = filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        } else if (mode === 'similar') {
-            const q = (state.searchQuery || '').trim();
-            if (q) {
-                const kw = q.split(/\s+/).filter(w => w.length >= 2);
-                filtered = filtered.sort((a, b) => {
-                    const sa = kw.reduce((acc, w) => acc + ((a.title || '').includes(w) ? 2 : 0) + ((a.content || '').includes(w) ? 1 : 0), 0);
-                    const sb = kw.reduce((acc, w) => acc + ((b.title || '').includes(w) ? 2 : 0) + ((b.content || '').includes(w) ? 1 : 0), 0);
-                    return sb - sa;
-                });
-            }
-        } else {
-            const follows = state.relationships.follows;
-            const now = Date.now();
-            const q = (state.searchQuery || '').trim();
-            const kw = q ? q.split(/\s+/).filter(w => w.length >= 2) : [];
-            let rcMeta = {};
-            try {
-                const ids = filtered.slice(0, 30).map(p => p.id);
-                rcMeta = await computeRecentCommentMeta(ids, 72);
-            } catch {}
-            const score = (p) => {
-                const t = (p.title || '');
-                const c = (p.content || '');
-                const kwScore = kw.length ? kw.reduce((acc, w) => acc + (t.includes(w) ? 2 : 0) + (c.includes(w) ? 1 : 0), 0) : 0;
-                const followBoost = p.user_id && follows.has(p.user_id) ? 2 : 0;
-                const likes = Number(p.like_count || 0);
-                const views = Number(p.view_count || 0);
-                const react = Math.log1p(likes) * 1.5 + Math.log1p(views) * 0.5;
-                const ageHrs = Math.max(0, (now - new Date(p.created_at).getTime()) / 3600000);
-                const recency = Math.exp(-ageHrs / 72) * 3;
-                const authorStats = p.profiles ? (Math.log1p(Number(p.profiles.post_count || 0)) + Math.log1p(Number(p.profiles.comment_count || 0))) * 0.3 : 0;
-                const rc = rcMeta[p.id] || { count: 0, lastTs: null };
-                const recentComments = Math.log1p(Number(rc.count || 0)) * 1.2;
-                const lastRecency = rc.lastTs ? Math.exp(-Math.max(0, (now - new Date(rc.lastTs).getTime()) / 3600000) / 24) * 1.5 : 0;
-                return kwScore + followBoost + react + recency + authorStats + recentComments + lastRecency;
-            };
-            filtered = filtered.sort((a, b) => score(b) - score(a));
-        }
-        if (state.recoBalanceEnabled) {
-            const cap = {};
-            filtered = filtered.filter(p => {
-                const key = p.stock_id || '__none__';
-                cap[key] = (cap[key] || 0) + 1;
-                return cap[key] <= 2;
-            });
-        }
-        filtered = filtered.slice(0, 6);
-        box.innerHTML = '';
-        const frag = document.createDocumentFragment();
-        filtered.forEach(p => frag.appendChild(createPostElement(p)));
-        box.appendChild(frag);
+        renderRecommendedFromPosts(cached.posts, mode);
         return;
     }
+
     let posts = [];
-    if (state.user) {
-        try {
-            const { data } = await client.rpc('get_recommended_posts', { p_user: state.user.id, p_limit: 6 });
-            posts = (data || []).filter(p => state.includeSecretInReco ? true : p.type !== 'secret');
-        } catch {
-            if (state.includeSecretInReco) {
-                const pub = await fetchPosts('public', null, false);
-                const inn = await fetchPosts('secret', null, false);
-                posts = [...pub, ...inn];
-            } else {
-                posts = await fetchPosts('public', null, false);
-            }
-        }
-    } else {
-        if (state.includeSecretInReco) {
-            const pub = await fetchPosts('public', null, false);
-            const inn = await fetchPosts('secret', null, false);
-            posts = [...pub, ...inn];
+    try {
+        if (state.user) {
+            const { data } = await client.rpc('get_recommended_posts', { p_user: state.user.id, p_limit: 30 });
+            posts = data || [];
         } else {
             posts = await fetchPosts('public', null, false);
         }
+    } catch {
+        posts = await fetchPosts('public', null, false);
     }
+
+    state.recommendedCache[cacheKey] = { ts: Date.now(), posts };
+    renderRecommendedFromPosts(posts, mode);
+}
+
+function renderRecommendedFromPosts(posts, mode) {
+    const box = document.getElementById('recommended-feed');
+    if (!box) return;
+
     const mutes = state.relationships.mutes;
     const blocks = state.relationships.blocks;
     const notis = state.notInterestedPostIds;
+
     let filtered = posts.filter(p => {
         const uid = p.user_id;
-        const pid = p.id;
         if (uid && (mutes.has(uid) || blocks.has(uid))) return false;
-        if (notis.has(pid)) return false;
+        if (notis.has(p.id)) return false;
         return true;
     });
+
     if (!state.includeSecretInReco) filtered = filtered.filter(p => p.type !== 'secret');
+
+    // Sorting & Scoring
     if (mode === 'follow') {
         const follows = state.relationships.follows;
         filtered = filtered.filter(p => p.user_id && follows.has(p.user_id));
     } else if (mode === 'new') {
         filtered = filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    } else if (mode === 'similar') {
-        const q = (state.searchQuery || '').trim();
-        if (q) {
-            const kw = q.split(/\s+/).filter(w => w.length >= 2);
-            filtered = filtered.sort((a, b) => {
-                const sa = kw.reduce((acc, w) => acc + ((a.title || '').includes(w) ? 2 : 0) + ((a.content || '').includes(w) ? 1 : 0), 0);
-                const sb = kw.reduce((acc, w) => acc + ((b.title || '').includes(w) ? 2 : 0) + ((b.content || '').includes(w) ? 1 : 0), 0);
-                return sb - sa;
-            });
-        }
     } else {
         const follows = state.relationships.follows;
         const now = Date.now();
-        const q = (state.searchQuery || '').trim();
-        const kw = q ? q.split(/\s+/).filter(w => w.length >= 2) : [];
-        let rcMap = {};
-        try {
-            const ids = filtered.slice(0, 30).map(p => p.id);
-            rcMap = await computeRecentCommentCounts(ids, 72);
-        } catch {}
         const score = (p) => {
-            const t = (p.title || '');
-            const c = (p.content || '');
-            const kwScore = kw.length ? kw.reduce((acc, w) => acc + (t.includes(w) ? 2 : 0) + (c.includes(w) ? 1 : 0), 0) : 0;
             const followBoost = p.user_id && follows.has(p.user_id) ? 2 : 0;
-            const likes = Number(p.like_count || 0);
-            const views = Number(p.view_count || 0);
-            const react = Math.log1p(likes) * 1.5 + Math.log1p(views) * 0.5;
+            const react = Math.log1p(Number(p.like_count || 0)) * 1.5 + Math.log1p(Number(p.view_count || 0)) * 0.5;
             const ageHrs = Math.max(0, (now - new Date(p.created_at).getTime()) / 3600000);
             const recency = Math.exp(-ageHrs / 72) * 3;
-            const authorStats = p.profiles ? (Math.log1p(Number(p.profiles.post_count || 0)) + Math.log1p(Number(p.profiles.comment_count || 0))) * 0.3 : 0;
-            const recentComments = Math.log1p(Number(rcMap[p.id] || 0)) * 1.2;
-            return kwScore + followBoost + react + recency + authorStats + recentComments;
+            return followBoost + react + recency;
         };
         filtered = filtered.sort((a, b) => score(b) - score(a));
     }
-    if (state.recoBalanceEnabled) {
-        const cap = {};
-        filtered = filtered.filter(p => {
-            const key = p.stock_id || '__none__';
-            cap[key] = (cap[key] || 0) + 1;
-            return cap[key] <= 2;
-        });
-    }
+
     filtered = filtered.slice(0, 6);
-    if (!filtered.length) {
-        box.innerHTML = '<div class="text-[11px] text-gray-500 mb-1">최근 인기 비급</div>';
-        try {
-            const { data: top } = await client.from('posts')
-                .select(`*, profiles:user_id (nickname, post_count, comment_count, avatar_url)`)
-                .order('like_count', { ascending: false })
-                .order('created_at', { ascending: false })
-                .limit(5);
-            const mutes = state.relationships.mutes;
-            const blocks = state.relationships.blocks;
-            let items = (top || []).filter(p => {
-                const uid = p.user_id;
-                if (uid && (mutes.has(uid) || blocks.has(uid))) return false;
-                return true;
-            });
-            if (!state.includeSecretInReco) items = items.filter(p => p.type !== 'secret');
-            const frag2 = document.createDocumentFragment();
-            items.forEach(p => frag2.appendChild(createPostElement(p)));
-            box.appendChild(frag2);
-        } catch {}
+    box.innerHTML = '';
+    if (filtered.length === 0) {
+        box.innerHTML = '<div class="text-[11px] text-gray-500 py-4">추천할 비급이 없소.</div>';
         return;
     }
-    box.innerHTML = '';
+
     const frag = document.createDocumentFragment();
     filtered.forEach(p => frag.appendChild(createPostElement(p)));
     box.appendChild(frag);
-    state.recommendedCache[cacheKey] = { ts: Date.now(), posts };
 }
 
 window.setRecommendedMode = function(mode) {
@@ -5132,7 +4852,6 @@ window.closeModal = (id) => {
         state.currentPostId = null;
     }
 };
-window.navigate = navigate;
 window.handleAuth = handleAuth;
 window.sendPasswordReset = sendPasswordReset;
 window.logout = logout;

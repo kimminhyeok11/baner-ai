@@ -52,7 +52,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
                     <span id="noti-badge" class="hidden absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-black"></span>
                 </button>
-                <div id="auth-buttons-mobile"></div>
+                <div id="auth-buttons-mob"></div>
             </div>
         </div>
     </header>
@@ -95,13 +95,17 @@
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                     자유 게시판
                 </button>
+                <button id="nav-my-page" onclick="navigate('my-page')" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all text-sm font-medium hidden" data-target="my-page">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                    나의 비급
+                </button>
                  <button onclick="openMenuPalette()" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all text-sm font-medium mt-auto">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
                     전체 메뉴
                 </button>
             </nav>
             
-            <div id="auth-buttons-desk" class="pt-4 border-t border-gray-800"></div>
+            <div id="auth-buttons" class="pt-4 border-t border-gray-800"></div>
         </aside>
 
         <!-- Main Content Area -->
@@ -121,20 +125,26 @@
                                     <button onclick="navigate('stock-board')" class="px-3 py-2 rounded-xl bg-[#1C1C1E] border border-gray-800 text-gray-300 hover:bg-gray-800">종목 비급</button>
                                     <button onclick="navigate('secret-inn')" class="px-3 py-2 rounded-xl bg-[#1C1C1E] border border-gray-800 text-gray-300 hover:bg-gray-800">암천 객잔</button>
                                 </div>
-                                <div class="mt-4 flex items-center gap-4">
-                                    <div class="flex items-center gap-2">
-                                        <span class="text-xs text-gray-500">KOSPI</span>
-                                        <div id="mini-kospi" class="text-sm text-gray-300"></div>
+                                <div id="plaza-indices" class="mt-6 grid grid-cols-2 gap-3 max-w-sm">
+                                    <div class="bg-black/40 border border-gray-800 rounded-2xl p-3 backdrop-blur-sm">
+                                        <div class="text-[10px] text-gray-500 font-bold uppercase mb-1">KOSPI</div>
+                                        <div id="mini-kospi" class="flex items-baseline gap-2">
+                                            <span class="text-lg font-black text-white">---</span>
+                                            <span class="text-[10px] text-gray-600">--%</span>
+                                        </div>
                                     </div>
-                                    <div class="flex items-center gap-2">
-                                        <span class="text-xs text-gray-500">KOSDAQ</span>
-                                        <div id="mini-kosdaq" class="text-sm text-gray-300"></div>
+                                    <div class="bg-black/40 border border-gray-800 rounded-2xl p-3 backdrop-blur-sm">
+                                        <div class="text-[10px] text-gray-500 font-bold uppercase mb-1">KOSDAQ</div>
+                                        <div id="mini-kosdaq" class="flex items-baseline gap-2">
+                                            <span class="text-lg font-black text-white">---</span>
+                                            <span class="text-[10px] text-gray-600">--%</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                             <div class="hidden md:flex items-center gap-6">
                                 <div class="text-right">
-                                    <div id="detail-views" class="hidden"></div>
+                                    <div class="hidden"></div>
                                 </div>
                             </div>
                         </div>
@@ -150,7 +160,7 @@
                                     <h3 class="text-lg font-bold text-white">최신 뉴스</h3>
                                     <button onclick="navigate('news-view')" class="text-xs text-yellow-500 hover:text-yellow-400 font-bold">더보기</button>
                                 </div>
-                                <div id="news-feed" class="space-y-3"></div>
+                                <div id="news-feed" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
                             </div>
 
                             <!-- Posts Feed -->
@@ -172,6 +182,16 @@
                                 <div class="card-elegant p-4 rounded-2xl bg-[#1C1C1E] border border-gray-800">
                                     <div class="text-sm text-yellow-500 font-bold mb-3 uppercase tracking-wider">Weekly Best</div>
                                     <div id="weekly-digest-list" class="space-y-2"></div>
+                                </div>
+                            </div>
+
+                            <div id="journal-widget">
+                                <div class="card-elegant p-4 rounded-2xl bg-[#1C1C1E] border border-gray-800">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <div class="text-sm text-red-500 font-bold uppercase tracking-wider">실시간 일지</div>
+                                        <button onclick="navigate('journal-board')" class="text-[10px] text-gray-500 hover:text-white">전체보기</button>
+                                    </div>
+                                    <div id="journal-feed" class="space-y-3 text-xs"></div>
                                 </div>
                             </div>
                             
