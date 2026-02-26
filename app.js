@@ -376,14 +376,34 @@ window.updateNewsProxySetting = function() {
         loadNews();
     } catch { showToast('기록에 차질이 생겼소.', 'error'); }
 };
+async function fetchNewsJson(query) {
+    const saved = getNewsProxyUrl();
+    const list = [];
+    if (saved) list.push(saved);
+    list.push('/api/news');
+    list.push(`${SUPABASE_URL}/functions/v1/news`);
+    const seen = new Set();
+    for (const base of list) {
+        if (!base || seen.has(base)) continue;
+        seen.add(base);
+        let url = base;
+        if (query && query.trim()) url = base + (base.includes('?') ? '&' : '?') + 'q=' + encodeURIComponent(query.trim());
+        const isSupabase = /supabase\.co\/functions\/v1\//i.test(base) || /functions\.supabase\.co\//i.test(base);
+        const headers = {};
+        if (isSupabase) headers['Authorization'] = `Bearer ${SUPABASE_ANON_KEY}`;
+        const finalUrl = isSupabase ? url : (url + (url.includes('?') ? '&' : '?') + '_=' + Date.now());
+        try {
+            const res = await fetch(finalUrl, { mode: 'cors', headers });
+            if (!res.ok) continue;
+            const data = await res.json();
+            return Array.isArray(data) ? data : (data.items || []);
+        } catch {}
+    }
+    return [];
+}
 async function loadNews() {
     const container = document.getElementById('news-feed');
     if (!container) return;
-    const proxy = getNewsProxyUrl();
-    if (!proxy) {
-        container.innerHTML = '<div class="text-[11px] text-gray-500">증권 뉴스 프록시를 설정하시오.</div>';
-        return;
-    }
     container.innerHTML = Array.from({ length: 4 }).map(() => `
         <div class="animate-pulse bg-[#1C1C1E] border border-gray-800 rounded-2xl p-4">
             <div class="h-2 bg-gray-800 rounded w-1/4 mb-3"></div>
@@ -392,14 +412,7 @@ async function loadNews() {
         </div>
     `).join('');
     try {
-        const isSupabase = /supabase\.co\/functions\/v1\//i.test(proxy) || /functions\.supabase\.co\//i.test(proxy);
-        const headers = {};
-        if (isSupabase) headers['Authorization'] = `Bearer ${SUPABASE_ANON_KEY}`;
-        const finalUrl = isSupabase ? proxy : (proxy + (proxy.includes('?') ? '&' : '?') + '_=' + Date.now());
-        const res = await fetch(finalUrl, { mode: 'cors', headers });
-        if (!res.ok) throw new Error('network');
-        const data = await res.json();
-        const itemsRaw = Array.isArray(data) ? data : (data.items || []);
+        const itemsRaw = await fetchNewsJson('');
         const items = itemsRaw.sort((a,b)=>{
             const ta = a.published_at ? Date.parse(a.published_at) : 0;
             const tb = b.published_at ? Date.parse(b.published_at) : 0;
@@ -447,22 +460,9 @@ async function loadNewsView() {
     const list = document.getElementById('news-list');
     if (!list) return;
     const q = (document.getElementById('news-query-input')?.value || '').trim();
-    const proxy = getNewsProxyUrl();
-    if (!proxy) {
-        list.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">프록시가 필요하오.</div>';
-        return;
-    }
     list.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">불러오는 중...</div>';
     try {
-        const isSupabase = /supabase\.co\/functions\/v1\//i.test(proxy) || /functions\.supabase\.co\//i.test(proxy);
-        const headers = {};
-        if (isSupabase) headers['Authorization'] = `Bearer ${SUPABASE_ANON_KEY}`;
-        const url = q ? `${proxy}?q=${encodeURIComponent(q)}` : proxy;
-        const finalUrl = isSupabase ? url : (url + (url.includes('?') ? '&' : '?') + '_=' + Date.now());
-        const res = await fetch(finalUrl, { mode: 'cors', headers });
-        if (!res.ok) throw new Error('network');
-        const data = await res.json();
-        const itemsRaw = Array.isArray(data) ? data : (data.items || []);
+        const itemsRaw = await fetchNewsJson(q);
         const items = itemsRaw.sort((a,b)=>{
             const ta = a.published_at ? Date.parse(a.published_at) : 0;
             const tb = b.published_at ? Date.parse(b.published_at) : 0;
@@ -478,57 +478,56 @@ async function loadNewsView() {
     }
 }
 window.refreshNewsView = function() { loadNewsView(); };
+function renderSparkline(elId, values, up = true) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    if (!Array.isArray(values) || values.length < 2) { el.innerHTML = ''; return; }
+    const w = 160, h = 32, pad = 2;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = max - min || 1;
+    const toX = (i) => pad + (i / (values.length - 1)) * (w - pad * 2);
+    const toY = (v) => pad + (h - pad * 2) - ((v - min) / span) * (h - pad * 2);
+    const d = values.map((v, i) => `${i === 0 ? 'M' : 'L'}${toX(i).toFixed(1)},${toY(v).toFixed(1)}`).join(' ');
+    const color = up ? '#ef4444' : '#60a5fa';
+    el.innerHTML = `
+        <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+            <path d="${d}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+    `;
+}
 async function loadMiniTrends() {
-    const boxKospi = document.getElementById('mini-kospi');
-    const boxKosdaq = document.getElementById('mini-kosdaq');
-    if (!boxKospi || !boxKosdaq) return;
+    const kospiBox = document.getElementById('mini-kospi');
+    const kosdaqBox = document.getElementById('mini-kosdaq');
+    const kospiChartEl = document.getElementById('mini-kospi-chart');
+    const kosdaqChartEl = document.getElementById('mini-kosdaq-chart');
+    if (!kospiBox || !kosdaqBox) return;
 
-    const renderSimple = (el, info) => {
+    const renderInfo = (el, info) => {
         const isUp = (info.change_percent || '').includes('+');
         const colorClass = isUp ? 'text-red-500' : 'text-blue-500';
         const sign = isUp ? '▲' : '▼';
-        el.innerHTML = `
-            <span class="text-lg font-black text-white">${info.point}</span>
-            <span class="${colorClass} text-[10px] font-bold">${sign} ${info.change_percent}</span>
-        `;
+        el.innerHTML = `<span class="text-lg font-black text-white">${info.point || '-'}</span><span class="${colorClass} text-[10px] font-bold">${sign} ${info.change_percent || '0.00%'}</span>`;
+        return isUp;
     };
-
-    const fetchSimple = async (index) => {
-        try {
-            // Prefer Supabase Edge Function for stability
-            const url = `${SUPABASE_URL}/functions/v1/trends?index=${encodeURIComponent(index)}`;
-            const headers = { Authorization: `Bearer ${SUPABASE_ANON_KEY}` };
-            const res = await fetch(url, { mode: 'cors', headers });
-            if (!res.ok) throw new Error('edge function failed');
-            const j = await res.json();
-            if (j.point && j.change_percent) return { point: j.point, change_percent: j.change_percent };
-            throw new Error('missing data');
-        } catch (e) {
-            // Fallback to proxy-based regex parsing
-            try {
-                const url = `https://r.jina.ai/http://finance.naver.com/sise/sise_index.naver?code=${index}`;
-                const res = await fetch(url, { mode: 'cors' });
-                const text = await res.text();
-                const compact = text.replace(/\s+/g, '');
-                const match = compact.match(/현재가([\d,]+(?:\.\d+)?)전일대비([▼▲])([\d,]+(?:\.\d+)?)등락률([+\-]?[\d\.]+)%/);
-                if (match) {
-                    const point = match[1];
-                    const sign = match[2] === '▲' ? '+' : '-';
-                    const pct = match[4];
-                    return { point, change_percent: `${sign}${pct}%` };
-                }
-            } catch {}
-            return { point: '-', change_percent: '0.00%' };
-        }
+    const fetchOne = async (index) => {
+        const url = `${SUPABASE_URL}/functions/v1/trends?index=${encodeURIComponent(index)}`;
+        const headers = { Authorization: `Bearer ${SUPABASE_ANON_KEY}` };
+        const res = await fetch(url, { mode: 'cors', headers });
+        if (!res.ok) throw new Error('edge function failed');
+        return await res.json();
     };
-
     try {
-        const [k, q] = await Promise.all([fetchSimple('KOSPI'), fetchSimple('KOSDAQ')]);
-        renderSimple(boxKospi, k);
-        renderSimple(boxKosdaq, q);
-    } catch {
-        boxKospi.innerText = '-';
-        boxKosdaq.innerText = '-';
+        const [k, q] = await Promise.all([fetchOne('KOSPI'), fetchOne('KOSDAQ')]);
+        const upK = renderInfo(kospiBox, { point: k.point, change_percent: k.change_percent });
+        const upQ = renderInfo(kosdaqBox, { point: q.point, change_percent: q.change_percent });
+        if (kospiChartEl) renderSparkline('mini-kospi-chart', Array.isArray(k.prices) ? k.prices : [], upK);
+        if (kosdaqChartEl) renderSparkline('mini-kosdaq-chart', Array.isArray(q.prices) ? q.prices : [], upQ);
+    } catch (e) {
+        kospiBox.innerHTML = `<span class="text-lg font-black text-white">-</span><span class="text-[10px] text-gray-600">--%</span>`;
+        kosdaqBox.innerHTML = `<span class="text-lg font-black text-white">-</span><span class="text-[10px] text-gray-600">--%</span>`;
+        if (kospiChartEl) kospiChartEl.innerHTML = '';
+        if (kosdaqChartEl) kosdaqChartEl.innerHTML = '';
     }
 }
 
