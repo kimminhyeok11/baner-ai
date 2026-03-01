@@ -474,6 +474,9 @@ function getNewsProxyUrl() {
             // file:// 환경에서 상대경로(/api/news)는 file:///C:/api/news로 깨지므로 무시
             if (isFile && s.startsWith('/')) {
                 // fall through to defaults below
+            } else if (!window.location.hostname.includes('vercel.app') && s.startsWith('/')) {
+                // 비-Vercel 호스트(GitHub Pages 등)에서는 /api/news가 없으므로 저장값 무시
+                // fall through to defaults below
             } else {
                 return s;
             }
@@ -531,7 +534,7 @@ async function fetchNewsJson(query) {
     try {
         const q = query && query.trim() ? query.trim() : '코스피 OR 코스닥 OR 증시';
         const rss = 'http://news.google.com/rss/search?hl=ko&gl=KR&ceid=KR:ko&q=' + encodeURIComponent(q);
-        const proxyUrl = 'https://r.jina.ai/http://' + rss;
+        const proxyUrl = 'https://r.jina.ai/' + rss;
         const res = await fetch(proxyUrl, { mode: 'cors' });
         if (!res.ok) return [];
         const xml = await res.text();
