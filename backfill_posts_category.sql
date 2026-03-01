@@ -4,6 +4,7 @@ create or replace function public.backfill_post_categories()
 returns void
 language plpgsql
 security definer
+set search_path = ''
 as $$
 begin
   update public.posts
@@ -21,4 +22,3 @@ end;
 $$;
 
 grant execute on function public.backfill_post_categories() to authenticated;
-

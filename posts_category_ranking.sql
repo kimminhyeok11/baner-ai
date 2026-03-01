@@ -11,6 +11,7 @@ create or replace function public.get_top_posts(p_hours int default 24, p_type t
 returns table (id uuid, title text, stock_id text, like_count int, view_count int, created_at timestamptz, category text)
 language sql
 stable
+set search_path = ''
 as $$
   with base as (
     select id, title, stock_id, like_count, view_count, created_at, category
@@ -31,4 +32,3 @@ as $$
 $$;
 
 grant execute on function public.get_top_posts(int, text, int) to anon, authenticated;
-

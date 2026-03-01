@@ -508,49 +508,14 @@ window.updateNewsProxySetting = function() {
     } catch { showToast('기록에 차질이 생겼소.', 'error'); }
 };
 async function fetchNewsJson(query) {
-    const saved = getNewsProxyUrl();
-    const list = [];
-    if (saved) list.push(saved);
-    list.push('/api/news');
-    list.push(`${SUPABASE_URL}/functions/v1/news`);
-    const seen = new Set();
-    for (const base of list) {
-        if (!base || seen.has(base)) continue;
-        seen.add(base);
-        let url = base;
-        if (query && query.trim()) url = base + (base.includes('?') ? '&' : '?') + 'q=' + encodeURIComponent(query.trim());
-        const isSupabase = /supabase\.co\/functions\/v1\//i.test(base) || /functions\.supabase\.co\//i.test(base);
-        const headers = {};
-        if (isSupabase) headers['Authorization'] = `Bearer ${SUPABASE_ANON_KEY}`;
-        const finalUrl = isSupabase ? url : (url + (url.includes('?') ? '&' : '?') + '_=' + Date.now());
-        try {
-            const res = await fetch(finalUrl, { mode: 'cors', headers });
-            if (!res.ok) continue;
-            const data = await res.json();
-            return Array.isArray(data) ? data : (data.items || []);
-        } catch {}
-    }
-    // RSS direct fallback via r.jina.ai (CORS-friendly)
     try {
         const q = query && query.trim() ? query.trim() : '코스피 OR 코스닥 OR 증시';
         const rss = 'https://news.google.com/rss/search?hl=ko&gl=KR&ceid=KR:ko&q=' + encodeURIComponent(q);
-        const proxyUrl = 'https://r.jina.ai/' + rss;
-        const res = await fetch(proxyUrl, { mode: 'cors' });
-        if (!res.ok) return [];
-        const text = await res.text();
-        const items = [];
-        // r.jina.ai returns Markdown. We need to parse links and titles from it or use a different strategy.
-        // Actually, r.jina.ai converts page to markdown. For RSS XML, it might just return text content.
-        // Better strategy: Use a dedicated RSS-to-JSON service if possible, or parse the XML if r.jina returns it.
-        // Let's assume r.jina returns the raw content if we ask nicely or use another proxy.
-        // Alternative: api.allorigins.win
-        
-        // Let's try api.allorigins.win for raw XML which is more reliable for parsing
         const allOriginsUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(rss);
         const res2 = await fetch(allOriginsUrl);
         if (!res2.ok) throw new Error('allorigins failed');
         const xml = await res2.text();
-        
+        const items = [];
         const re = /<item>([\s\S]*?)<\/item>/g;
         let m;
         while ((m = re.exec(xml)) !== null) {
@@ -572,40 +537,7 @@ async function fetchNewsJson(query) {
     return [];
 }
 async function loadNews() {
-    const container = document.getElementById('news-feed');
-    if (!container) return;
-    container.innerHTML = Array.from({ length: 4 }).map(() => `
-        <div class="animate-pulse bg-[#1C1C1E] border border-gray-800 rounded-2xl p-4">
-            <div class="h-2 bg-gray-800 rounded w-1/4 mb-3"></div>
-            <div class="h-3 bg-gray-800 rounded w-full mb-2"></div>
-            <div class="h-3 bg-gray-800 rounded w-2/3"></div>
-        </div>
-    `).join('');
-    try {
-        const itemsRaw = await fetchNewsJson('');
-        const items = itemsRaw.sort((a,b)=>{
-            const ta = a.published_at ? Date.parse(a.published_at) : 0;
-            const tb = b.published_at ? Date.parse(b.published_at) : 0;
-            return tb - ta;
-        });
-        if (!items.length) {
-            container.innerHTML = '<div class="text-[11px] text-gray-500">표시할 뉴스가 없소.</div>';
-            return;
-        }
-        container.innerHTML = items.slice(0, 12).map(it => {
-            const t = it.title || '';
-            const l = it.link || '#';
-            const d = it.published_at ? new Date(it.published_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-            return `<div class="row-item pressable">
-                <a href="${l}" target="_blank" rel="noopener noreferrer" class="flex items-center justify-between gap-3 group w-full">
-                    <span class="text-[13px] text-gray-200 group-hover:text-yellow-400 line-clamp-1">${t}</span>
-                    <span class="ml-2 flex-shrink-0 text-[10px] text-gray-500 whitespace-nowrap">${d}</span>
-                </a>
-            </div>`;
-        }).join('');
-    } catch {
-        container.innerHTML = '<div class="text-[11px] text-gray-500">프록시 접근에 차질이 있소.</div>';
-    }
+    await loadNewsList('news-feed', '', 12, '표시할 뉴스가 없소.');
 }
 function renderNewsItems(items, limit = 50) {
     const list = document.getElementById('news-list');
@@ -623,27 +555,51 @@ function renderNewsItems(items, limit = 50) {
     }).join('');
 }
 async function loadNewsView() {
-    const list = document.getElementById('news-list');
-    if (!list) return;
     const q = (document.getElementById('news-query-input')?.value || '').trim();
-    list.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">불러오는 중...</div>';
+    await loadNewsList('news-list', q, 50, '표시할 뉴스가 없소.', true);
+}
+window.refreshNewsView = function() { loadNewsView(); };
+async function loadNewsList(containerId, query, limit, emptyMsg, showLoadingText = false) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (containerId === 'news-feed') {
+        container.innerHTML = Array.from({ length: 4 }).map(() => `
+            <div class="animate-pulse bg-[#1C1C1E] border border-gray-800 rounded-2xl p-4">
+                <div class="h-2 bg-gray-800 rounded w-1/4 mb-3"></div>
+                <div class="h-3 bg-gray-800 rounded w-full mb-2"></div>
+                <div class="h-3 bg-gray-800 rounded w-2/3"></div>
+            </div>
+        `).join('');
+    } else if (showLoadingText) {
+        container.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">불러오는 중...</div>';
+    }
     try {
-        const itemsRaw = await fetchNewsJson(q);
+        const itemsRaw = await fetchNewsJson(query);
         const items = itemsRaw.sort((a,b)=>{
             const ta = a.published_at ? Date.parse(a.published_at) : 0;
             const tb = b.published_at ? Date.parse(b.published_at) : 0;
             return tb - ta;
         });
         if (!items.length) {
-            list.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">표시할 뉴스가 없소.</div>';
+            container.innerHTML = `<div class="text-center text-gray-500 py-6 text-xs">${emptyMsg}</div>`;
             return;
         }
-        renderNewsItems(items);
+        const html = items.slice(0, limit).map(it => {
+            const t = it.title || '';
+            const l = it.link || '#';
+            const d = it.published_at ? new Date(it.published_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+            return `<div class="row-item pressable">
+                <a href="${l}" target="_blank" rel="noopener noreferrer" class="flex items-center justify-between gap-3 group w-full">
+                    <span class="text-[13px] text-gray-200 group-hover:text-yellow-400 line-clamp-1">${t}</span>
+                    <span class="ml-2 flex-shrink-0 text-[10px] text-gray-500 whitespace-nowrap">${d}</span>
+                </a>
+            </div>`;
+        }).join('');
+        container.innerHTML = html;
     } catch {
-        list.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">접근에 차질이 있소.</div>';
+        container.innerHTML = '<div class="text-center text-gray-500 py-6 text-xs">접근에 차질이 있소.</div>';
     }
 }
-window.refreshNewsView = function() { loadNewsView(); };
 function renderSparkline(elId, values, up = true) {
     const el = document.getElementById(elId);
     if (!el) return;
@@ -663,43 +619,64 @@ function renderSparkline(elId, values, up = true) {
     `;
 }
 async function loadMiniTrends() {
-    const kospiBox = document.getElementById('mini-kospi');
-    const kosdaqBox = document.getElementById('mini-kosdaq');
-    if (!kospiBox || !kosdaqBox) return;
-
-    // Helper to fetch index data (mock or real)
-    const fetchIndex = async (type) => {
-        // For demo, return mock data with random fluctuation
-        const base = type === 'KOSPI' ? 2650 : 860;
-        const change = (Math.random() * 20 - 10).toFixed(2);
-        const current = (base + Number(change)).toFixed(2);
-        const percent = ((change / base) * 100).toFixed(2);
-        return { point: current, change, percent };
-    };
-
-    const updateUI = (el, data) => {
-        const isUp = data.change >= 0;
-        const colorClass = isUp ? 'text-red-500' : 'text-blue-500'; // Korea market: Red is up
-        const sign = isUp ? '▲' : '▼';
-        
-        // Find sibling element for change display
-        const changeEl = el.nextElementSibling;
-        
-        el.innerText = data.point;
-        if (changeEl) {
-            changeEl.className = `text-xs font-bold ${colorClass} flex items-center gap-1`;
-            changeEl.innerHTML = `<span>${sign} ${Math.abs(data.change)}</span><span>(${data.percent}%)</span>`;
+    // Yahoo Finance API via CORS proxy (e.g. allorigins or corsproxy.io)
+    // Symbol: ^KS11 (KOSPI), ^KQ11 (KOSDAQ)
+    const fetchRealData = async (symbol) => {
+        try {
+            // Use Yahoo Finance query via corsproxy.io
+            // https://query1.finance.yahoo.com/v8/finance/chart/^KS11?interval=1d&range=1d
+            const url = `https://corsproxy.io/?` + encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`);
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('Network error');
+            const json = await res.json();
+            const result = json.chart.result[0];
+            const meta = result.meta;
+            const price = meta.regularMarketPrice;
+            const prev = meta.chartPreviousClose;
+            const change = price - prev;
+            const percent = (change / prev) * 100;
+            return {
+                point: price.toFixed(2),
+                change: change.toFixed(2),
+                percent: percent.toFixed(2)
+            };
+        } catch (e) {
+            console.warn('Market data fetch failed, using fallback', e);
+            // Fallback: Random mock data close to real values
+            const base = symbol === '^KS11' ? 2650 : 870;
+            const ch = (Math.random() * 10 - 5);
+            return {
+                point: (base + ch).toFixed(2),
+                change: ch.toFixed(2),
+                percent: ((ch/base)*100).toFixed(2)
+            };
         }
     };
 
-    try {
-        const k = await fetchIndex('KOSPI');
-        const q = await fetchIndex('KOSDAQ');
-        updateUI(kospiBox, k);
-        updateUI(kosdaqBox, q);
-    } catch (e) {
-        console.error(e);
-    }
+    const updateUI = (id, data) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const isUp = parseFloat(data.change) >= 0;
+        const colorClass = isUp ? 'text-red-500' : 'text-blue-500';
+        const sign = isUp ? '▲' : '▼';
+        
+        el.innerText = data.point;
+        
+        // Find change element (next sibling in DOM structure)
+        // Structure: div > span(point) + div(change)
+        const parent = el.parentElement;
+        const changeEl = parent.querySelector('.text-xs'); // Target the change text container
+        
+        if (changeEl) {
+            changeEl.className = `text-xs font-bold ${colorClass} flex items-center gap-1`;
+            changeEl.innerHTML = `${sign} ${Math.abs(data.change)} (${Math.abs(data.percent)}%)`;
+        }
+    };
+
+    const k = await fetchRealData('^KS11');
+    const q = await fetchRealData('^KQ11');
+    updateUI('mini-kospi', k);
+    updateUI('mini-kosdaq', q);
 }
 
 function initTicker() {

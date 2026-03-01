@@ -1,0 +1,15 @@
+# Node.js
+node_modules/
+.env
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# System
+thumbs.db
+
+# Build
+dist/
+build/

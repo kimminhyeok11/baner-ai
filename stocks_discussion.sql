@@ -28,6 +28,7 @@ create or replace function public.get_hot_stock_rooms(p_hours int default 24, p_
 returns table (stock_id text, post_count bigint)
 language sql
 stable
+set search_path = ''
 as $$
   select stock_id, count(*) as post_count
   from public.posts
@@ -46,6 +47,7 @@ create or replace function public.search_stocks(p_query text, p_limit int defaul
 returns table (code text, name text, market text, score real)
 language sql
 stable
+set search_path = ''
 as $$
   with q as (
     select trim(p_query) as q
@@ -75,4 +77,3 @@ grant execute on function public.search_stocks(text, int) to anon, authenticated
 -- ('000660','SK하이닉스','KOSPI','반도체 HBM'),
 -- ('035420','NAVER','KOSPI','포털 AI'),
 -- ('035720','카카오','KOSPI','플랫폼 메신저');
-

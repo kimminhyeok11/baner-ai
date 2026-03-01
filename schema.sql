@@ -31,7 +31,7 @@ begin
   values (new.id, '문도_' || substr(new.id::text, 1, 6));
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = '';
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
@@ -136,7 +136,7 @@ begin
     and created_at::date = timezone('utc', now())::date;
   return cnt < 10;
 end;
-$$ language plpgsql stable;
+$$ language plpgsql stable set search_path = '';
 
 -- Ensure guest_device_id column exists (for older deployments)
 do $$
@@ -307,7 +307,7 @@ begin
   end if;
   return null;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = '';
 
 drop trigger if exists on_post_like_change on public.post_likes;
 create trigger on_post_like_change
@@ -398,7 +398,7 @@ begin
   end if;
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = '';
 
 drop trigger if exists on_comment_created on public.comments;
 create trigger on_comment_created
@@ -439,7 +439,7 @@ begin
     and user_id is null
     and guest_device_id = p_device_id;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = '';
 create or replace function public.handle_new_like()
 returns trigger as $$
 declare
@@ -454,7 +454,7 @@ begin
   end if;
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = '';
 
 drop trigger if exists on_post_liked on public.post_likes;
 create trigger on_post_liked
@@ -473,7 +473,7 @@ begin
   end if;
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = '';
 
 drop trigger if exists on_message_created on public.messages;
 create trigger on_message_created
@@ -819,7 +819,7 @@ begin
   end if;
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = '';
 
 drop trigger if exists on_deposit_confirm on public.deposit_requests;
 create trigger on_deposit_confirm
@@ -846,7 +846,7 @@ returns table (
   score numeric
 )
 language sql
-security invoker
+security invoker set search_path = ''
 as $$
   with base as (
     select
