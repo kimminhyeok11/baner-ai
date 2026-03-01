@@ -1,11 +1,21 @@
 // ------------------------------------------------------------------
 // 1. Supabase 설정 & 전역 상태
 // ------------------------------------------------------------------
-const SUPABASE_URL = 'https://qvwaflyesshwaeprudqo.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2d2FmbHllc3Nod2FlcHJ1ZHFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2ODY2MjgsImV4cCI6MjA4NTI2MjYyOH0.oe8KIIMuAzpHExzJBBuWq-oNB6loi4UVUz1EbYwl2L0';
+const APP_ENV = typeof window !== 'undefined' && window.__APP_ENV ? window.__APP_ENV : {};
+function readEnvValue(key, fallback) {
+    try {
+        const v = localStorage.getItem(key);
+        if (v) return v;
+    } catch {}
+    if (APP_ENV && APP_ENV[key]) return APP_ENV[key];
+    return fallback;
+}
+const SUPABASE_URL = readEnvValue('SUPABASE_URL', 'https://kuvvjslxvwkmjrqdmask.supabase.co');
+const SUPABASE_PUBLISHABLE_KEY = readEnvValue('SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_dTVvg1YH_7MXhv6nnoe57w_VYZ9Wd6K');
+const SUPABASE_ANON_KEY = readEnvValue('SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt1dnZqc2x4dndrbWpycWRtYXNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNjE1NTksImV4cCI6MjA4NzkzNzU1OX0.vfL1N10oZze8Ea4cqOnxdmZbaSHIPeMa_V2Y2gXq94s');
 const STORAGE_BUCKET = 'images';
 
-const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const client = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY || SUPABASE_ANON_KEY);
 
 const state = {
     user: null,
@@ -52,7 +62,50 @@ const state = {
     dataCollectionEnabled: (() => { try { return JSON.parse(localStorage.getItem('reco_logging_enabled') || 'true'); } catch { return true; } })(),
     recommendedCache: {},
     recoBalanceEnabled: (() => { try { return JSON.parse(localStorage.getItem('reco_balance_enabled') || 'true'); } catch { return true; } })()
+    ,newsCache: {}
+    ,newsRequestId: {}
+    ,searchOrderByType: { public: 'rank', stock: 'rank', secret: 'rank' }
+    ,infiniteObservers: {}
+    ,paginationByType: {
+        public: { limit: 10, page: 0, hasMore: true, isLoading: false },
+        stock: { limit: 10, page: 0, hasMore: true, isLoading: false },
+        secret: { limit: 10, page: 0, hasMore: true, isLoading: false }
+    }
 };
+
+function getPagination(type) {
+    const key = type || 'public';
+    if (!state.paginationByType) state.paginationByType = {};
+    if (!state.paginationByType[key]) state.paginationByType[key] = { limit: 10, page: 0, hasMore: true, isLoading: false };
+    return state.paginationByType[key];
+}
+function logClientError(payload) {
+    try {
+        const key = 'client_error_log';
+        const arr = JSON.parse(localStorage.getItem(key) || '[]');
+        arr.unshift({ t: new Date().toISOString(), ...payload });
+        localStorage.setItem(key, JSON.stringify(arr.slice(0, 30)));
+    } catch {}
+}
+function logRateLimit(action, reason) {
+    try {
+        client.rpc('log_rate_limit', {
+            p_action: action,
+            p_reason: reason,
+            p_user_id: state.user ? state.user.id : null,
+            p_guest_device_id: state.user ? null : getGuestDeviceId()
+        });
+    } catch {}
+}
+try {
+    window.addEventListener('error', (e) => {
+        logClientError({ type: 'error', message: e?.message || 'unknown', source: e?.filename, line: e?.lineno, col: e?.colno });
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+        const msg = e?.reason?.message || String(e?.reason || 'unknown');
+        logClientError({ type: 'unhandledrejection', message: msg });
+    });
+} catch {}
 
 async function computeRecentCommentMeta(postIds, hours = 72) {
     try {
@@ -84,6 +137,12 @@ try {
 try {
     const rs = JSON.parse(localStorage.getItem('recent_stocks') || '[]');
     if (Array.isArray(rs)) state.recentStocks = rs.slice(0, 8);
+} catch {}
+try {
+    ['public','stock','secret'].forEach(t => {
+        const v = localStorage.getItem(`search_order_${t}`);
+        if (v) state.searchOrderByType[t] = v;
+    });
 } catch {}
 try {
     const sm = JSON.parse(localStorage.getItem('stocks_master') || '[]');
@@ -471,6 +530,13 @@ function getNewsProxyUrl() {
         const isFile = window.location.protocol === 'file:';
         if (saved && saved.trim()) {
             const s = saved.trim();
+            try {
+                const u = new URL(s);
+                if (!/^https?:$/i.test(u.protocol)) throw new Error('bad protocol');
+                if (u.hostname === 'baner-ai.vercel.app') throw new Error('blocked host');
+            } catch {
+                localStorage.removeItem('news_proxy_url');
+            }
             // file:// 환경에서 상대경로(/api/news)는 file:///C:/api/news로 깨지므로 무시
             if (isFile && s.startsWith('/')) {
                 // fall through to defaults below
@@ -478,7 +544,7 @@ function getNewsProxyUrl() {
                 // 비-Vercel 호스트(GitHub Pages 등)에서는 /api/news가 없으므로 저장값 무시
                 // fall through to defaults below
             } else {
-                return s;
+                if (s && s.trim()) return s;
             }
         }
         // Fallback to vercel api if on vercel, otherwise use supabase
@@ -507,32 +573,77 @@ window.updateNewsProxySetting = function() {
         loadNews();
     } catch { showToast('기록에 차질이 생겼소.', 'error'); }
 };
-async function fetchNewsJson(query) {
+function parseRssItems(xml) {
+    const items = [];
+    const re = /<item>([\s\S]*?)<\/item>/g;
+    let m;
+    while ((m = re.exec(xml)) !== null) {
+        const item = m[1];
+        const pick = (tag) => {
+            const mm = item.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`));
+            const v = mm ? mm[1] : '';
+            return v.replace(/<!\[CDATA\[(.*?)\]\]>/g, '$1').trim();
+        };
+        items.push({
+            title: pick('title'),
+            link: pick('link'),
+            source: pick('source'),
+            published_at: pick('pubDate')
+        });
+    }
+    return items;
+}
+function buildNewsUrl(baseUrl, query) {
+    const q = query && query.trim() ? query.trim() : '코스피 OR 코스닥 OR 증시';
+    if (!baseUrl) return '';
+    if (baseUrl.includes('{q}')) return baseUrl.replace('{q}', encodeURIComponent(q));
+    if (baseUrl.includes('{{q}}')) return baseUrl.replace('{{q}}', encodeURIComponent(q));
+    const joiner = baseUrl.includes('?') ? '&' : '?';
+    return `${baseUrl}${joiner}q=${encodeURIComponent(q)}`;
+}
+function getSupabaseFunctionHeaders() {
+    const key = SUPABASE_PUBLISHABLE_KEY || SUPABASE_ANON_KEY;
+    if (!key) return {};
+    return { apikey: key, Authorization: `Bearer ${key}` };
+}
+async function fetchWithTimeout(url, timeoutMs, headers) {
     try {
-        const q = query && query.trim() ? query.trim() : '코스피 OR 코스닥 OR 증시';
-        const rss = 'https://news.google.com/rss/search?hl=ko&gl=KR&ceid=KR:ko&q=' + encodeURIComponent(q);
-        const allOriginsUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(rss);
-        const res2 = await fetch(allOriginsUrl);
-        if (!res2.ok) throw new Error('allorigins failed');
-        const xml = await res2.text();
-        const items = [];
-        const re = /<item>([\s\S]*?)<\/item>/g;
-        let m;
-        while ((m = re.exec(xml)) !== null) {
-            const item = m[1];
-            const pick = (tag) => {
-                const mm = item.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`));
-                const v = mm ? mm[1] : '';
-                return v.replace(/<!\[CDATA\[(.*?)\]\]>/g, '$1').trim();
-            };
-            items.push({
-                title: pick('title'),
-                link: pick('link'),
-                source: pick('source'),
-                published_at: pick('pubDate')
-            });
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs));
+        const res = await Promise.race([fetch(url, headers ? { headers } : undefined), timeout]);
+        if (!res || !res.ok) return [];
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
+        if (ct.includes('application/json')) {
+            const json = await res.json();
+            if (Array.isArray(json)) return json;
+            if (Array.isArray(json.items)) return json.items;
+            if (Array.isArray(json.data)) return json.data;
+            if (json && json.items) return json.items;
+            return [];
         }
-        return items;
+        const text = await res.text();
+        return parseRssItems(text);
+    } catch {
+        return [];
+    }
+}
+async function fetchNewsJson(query) {
+    const q = query && query.trim() ? query.trim() : '코스피 OR 코스닥 OR 증시';
+    const rss = 'https://news.google.com/rss/search?hl=ko&gl=KR&ceid=KR:ko&q=' + encodeURIComponent(q);
+    const proxyBase = getNewsProxyUrl();
+    const proxyUrl = buildNewsUrl(proxyBase, query);
+    const urls = [];
+    if (proxyUrl) urls.push(proxyUrl);
+    urls.push('https://api.allorigins.win/raw?url=' + encodeURIComponent(rss));
+    urls.push('https://r.jina.ai/https://news.google.com/rss/search?hl=ko&gl=KR&ceid=KR:ko&q=' + encodeURIComponent(q));
+    urls.push('https://r.jina.ai/http://news.google.com/rss/search?hl=ko&gl=KR&ceid=KR:ko&q=' + encodeURIComponent(q));
+    for (const url of urls) {
+        const isSupabase = url.startsWith(SUPABASE_URL);
+        const items = await fetchWithTimeout(url, 8000, isSupabase ? getSupabaseFunctionHeaders() : undefined);
+        if (items && items.length) return items;
+    }
+    try {
+        const { data, error } = await client.functions.invoke('news', { body: { q } });
+        if (!error && data && Array.isArray(data.items)) return data.items;
     } catch {}
     return [];
 }
@@ -562,7 +673,24 @@ window.refreshNewsView = function() { loadNewsView(); };
 async function loadNewsList(containerId, query, limit, emptyMsg, showLoadingText = false) {
     const container = document.getElementById(containerId);
     if (!container) return;
-    if (containerId === 'news-feed') {
+    const cacheKey = (query || '').trim();
+    const cached = state.newsCache?.[cacheKey];
+    const reqId = (state.newsRequestId?.[containerId] || 0) + 1;
+    state.newsRequestId[containerId] = reqId;
+    if (cached && Array.isArray(cached.items) && cached.items.length) {
+        const html = cached.items.slice(0, limit).map(it => {
+            const t = it.title || '';
+            const l = it.link || '#';
+            const d = it.published_at ? new Date(it.published_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+            return `<div class="row-item pressable">
+                <a href="${l}" target="_blank" rel="noopener noreferrer" class="flex items-center justify-between gap-3 group w-full">
+                    <span class="text-[13px] text-gray-200 group-hover:text-yellow-400 line-clamp-1">${t}</span>
+                    <span class="ml-2 flex-shrink-0 text-[10px] text-gray-500 whitespace-nowrap">${d}</span>
+                </a>
+            </div>`;
+        }).join('');
+        container.innerHTML = html;
+    } else if (containerId === 'news-feed') {
         container.innerHTML = Array.from({ length: 4 }).map(() => `
             <div class="animate-pulse bg-[#1C1C1E] border border-gray-800 rounded-2xl p-4">
                 <div class="h-2 bg-gray-800 rounded w-1/4 mb-3"></div>
@@ -575,11 +703,14 @@ async function loadNewsList(containerId, query, limit, emptyMsg, showLoadingText
     }
     try {
         const itemsRaw = await fetchNewsJson(query);
+        if (state.newsRequestId[containerId] !== reqId) return;
         const items = itemsRaw.sort((a,b)=>{
             const ta = a.published_at ? Date.parse(a.published_at) : 0;
             const tb = b.published_at ? Date.parse(b.published_at) : 0;
             return tb - ta;
         });
+        if (!state.newsCache) state.newsCache = {};
+        state.newsCache[cacheKey] = { items, ts: Date.now() };
         if (!items.length) {
             container.innerHTML = `<div class="text-center text-gray-500 py-6 text-xs">${emptyMsg}</div>`;
             return;
@@ -901,6 +1032,7 @@ async function updateAuthState(session) {
         state.likedPostIds = new Set();
         state.relationships = { follows: new Set(), blocks: new Set(), mutes: new Set() };
         document.documentElement.setAttribute('data-theme', 'dark');
+        setupRealtimeMessages();
         
         // Hide My Page button
         const navBtn = document.getElementById('nav-my-page');
@@ -971,6 +1103,14 @@ async function toWebpBlob(file, maxDim = 1920, quality = 0.85) {
     return blob;
 }
 
+function validateImageFile(file, maxMb = 5) {
+    if (!file) return { ok: false, message: '이미지를 선택하시오.' };
+    if (!file.type || !file.type.startsWith('image/')) return { ok: false, message: '이미지 파일만 가능하오.' };
+    const max = maxMb * 1024 * 1024;
+    if (file.size > max) return { ok: false, message: `${maxMb}MB 이하만 가능하오.` };
+    return { ok: true };
+}
+
 function storagePathFromUrl(publicUrl) {
     const m = publicUrl.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
     if (!m) return null;
@@ -1027,6 +1167,12 @@ window.handleImageUpload = async function() {
     const fileInput = document.getElementById('image-upload-input');
     const file = fileInput.files[0];
     if (!file) return;
+    const chk = validateImageFile(file, 5);
+    if (!chk.ok) {
+        showToast(chk.message, 'error');
+        fileInput.value = '';
+        return;
+    }
     
     try {
         const publicUrl = await uploadImage(file, 'posts');
@@ -1159,6 +1305,14 @@ async function savePost() {
         if (count >= 3) return showToast('하루에 세 편의 익명 비급만 허용되오.', 'error');
     }
 
+    if (!state.isEditing) {
+        const key = `post_cooldown_${state.user ? state.user.id : 'guest'}`;
+        const last = parseInt(localStorage.getItem(key) || '0');
+        const now = Date.now();
+        const minGap = state.user ? 15000 : 30000;
+        if (now - last < minGap) return showToast('너무 빠르오. 잠시 후 다시 시도하오.', 'error');
+    }
+
     const payload = {
         title, content: contentHTML, type, 
         stock_id: stockName,
@@ -1175,6 +1329,7 @@ async function savePost() {
     } else {
         payload.user_id = state.user ? state.user.id : null;
         payload.guest_nickname = state.user ? null : `무협객(${Math.floor(Math.random()*1000)})`;
+        payload.guest_device_id = state.user ? null : getGuestDeviceId();
         payload.view_count = 0;
         payload.like_count = 0;
         const { error: insertError } = await client.from('posts').insert(payload);
@@ -1183,9 +1338,20 @@ async function savePost() {
 
     if (error) {
         console.error(`실패:`, error);
-        showToast('비급 보관 중 차질이 생겼소.', 'error');
+        const m = (error.message || '').toLowerCase();
+        if (m.includes('row level security') || m.includes('with check')) {
+            showToast('비급 제한에 걸렸소. 잠시 후 다시 시도하오.', 'error');
+            logRateLimit('post_insert', error.message || 'rls');
+        } else {
+            showToast('비급 보관 중 차질이 생겼소.', 'error');
+        }
     } else {
         if(!state.isEditing) clearTempPost();
+
+        if (!state.isEditing) {
+            const key = `post_cooldown_${state.user ? state.user.id : 'guest'}`;
+            localStorage.setItem(key, String(Date.now()));
+        }
         
         if (type === 'secret' && !state.user) {
             const today = new Date().toISOString().split('T')[0];
@@ -1239,11 +1405,13 @@ window.deletePost = async function(postId) {
 let miniTrendsInterval = null;
 
 async function navigate(viewId, pushHistory = true) {
+    const useHashRouting = ['localhost', '127.0.0.1'].includes(window.location.hostname);
     if (pushHistory) {
         // 로컬 파일 프로토콜(file://)에서는 history.pushState 사용 시 보안 오류 발생 가능
         // 따라서 http/https 프로토콜일 때만 실행하거나 try-catch로 감싸야 함
         if (window.location.protocol.startsWith('http')) {
-            history.pushState({ viewId }, '', `/${viewId}`);
+            if (useHashRouting) history.pushState({ viewId }, '', `#${viewId}`);
+            else history.pushState({ viewId }, '', `/${viewId}`);
         } else {
             // 로컬 개발 환경용 폴백 (해시 사용)
             // history.pushState({ viewId }, '', `#${viewId}`);
@@ -1371,6 +1539,7 @@ async function navigate(viewId, pushHistory = true) {
     if (viewId === 'secret-inn') renderPosts('posts-list-secret', 'secret');
     if (viewId === 'my-page') renderMyPage();
     if (viewId === 'materials-board') loadMaterialsBoard();
+    setupRealtimePostsForView();
     trackRecentMenu(viewId);
     renderRecentMenuBar();
 }
@@ -2818,6 +2987,12 @@ window.updateAvatar = async function() {
     const input = document.getElementById('avatar-input');
     const file = input.files[0];
     if (!file) return showToast('이미지를 선택하시오.', 'error');
+    const chk = validateImageFile(file, 5);
+    if (!chk.ok) {
+        showToast(chk.message, 'error');
+        input.value = '';
+        return;
+    }
     try {
         const oldUrl = state.profile?.avatar_url;
         const url = await uploadImage(file, 'avatars');
@@ -2844,6 +3019,12 @@ window.updateBanner = async function() {
     const input = document.getElementById('banner-input');
     const file = input.files[0];
     if (!file) return showToast('이미지를 선택하시오.', 'error');
+    const chk = validateImageFile(file, 5);
+    if (!chk.ok) {
+        showToast(chk.message, 'error');
+        input.value = '';
+        return;
+    }
     try {
         const oldUrl = state.profile?.banner_url;
         const url = await uploadImage(file, 'banners');
@@ -3109,6 +3290,7 @@ function setCurrentStock(name) {
     renderRecentStocks();
     updateCurrentStockHeader();
     renderPosts('posts-list-stock', 'stock', name || null);
+    setupRealtimePostsForView();
 }
 
 function updateCurrentStockHeader() {
@@ -3253,6 +3435,24 @@ function debounce(fn, wait) {
         t = setTimeout(() => fn.apply(this, args), wait);
     }
 }
+function escapeRegExp(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function highlightText(text, query) {
+    if (!query) return text;
+    const q = query.trim();
+    if (!q) return text;
+    const re = new RegExp(escapeRegExp(q), 'gi');
+    return text.replace(re, (m) => `<mark class="search-highlight">${m}</mark>`);
+}
+function getSearchOrder(type) {
+    return state.searchOrderByType?.[type] || 'rank';
+}
+function setSearchOrder(type, order) {
+    if (!state.searchOrderByType) state.searchOrderByType = {};
+    state.searchOrderByType[type] = order || 'rank';
+    try { localStorage.setItem(`search_order_${type}`, state.searchOrderByType[type]); } catch {}
+}
 
 async function searchStocksRPC(q) {
     if (!q || q.length < 1) return;
@@ -3309,9 +3509,25 @@ async function renderHomeStockRank(mode = 'today') {
     if (mode === 'week') hours = 24 * 7;
     let posts = [];
     try {
-        const { data } = await client.rpc('get_top_posts', { p_hours: hours, p_type: 'stock', p_limit: 8 });
-        if (Array.isArray(data)) posts = data;
+        const { data, error } = await client.rpc('get_top_posts', { p_hours: hours, p_type: 'stock', p_limit: 8 });
+        if (!error && Array.isArray(data)) posts = data;
     } catch {}
+    if (!posts.length) {
+        try {
+            const since = new Date(Date.now() - hours * 3600 * 1000).toISOString();
+            const { data } = await client.from('posts')
+                .select('id,title,stock_id,like_count,view_count,created_at')
+                .eq('type','stock')
+                .gte('created_at', since)
+                .order('created_at', { ascending: false })
+                .limit(50);
+            posts = (data || []).sort((a,b)=> {
+                const sa = Math.log1p(Number(a.like_count || 0))*2 + Math.log1p(Number(a.view_count || 0));
+                const sb = Math.log1p(Number(b.like_count || 0))*2 + Math.log1p(Number(b.view_count || 0));
+                return sb - sa;
+            }).slice(0,8);
+        } catch {}
+    }
     if (!posts.length) { list.innerHTML = '<div class="text-[11px] text-gray-500">데이터 없음</div>'; return; }
     list.innerHTML = posts.map(p => {
         const title = p.title || '';
@@ -3329,6 +3545,13 @@ async function renderHomeStockRank(mode = 'today') {
             const { data } = await client.from('posts').select(`*, profiles:user_id (nickname)`).eq('id', id).single();
             if (data) openPostDetail(data);
         };
+        el.tabIndex = 0;
+        el.onkeydown = (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                el.click();
+            }
+        };
     });
     ['home-rank-best','home-rank-today','home-rank-week'].forEach(id => {
         const b = document.getElementById(id);
@@ -3338,16 +3561,59 @@ async function renderHomeStockRank(mode = 'today') {
     });
 }
 async function fetchPosts(type, stockName = null, isLoadMore = false) {
-    if (state.pagination.isLoading) return;
-    state.pagination.isLoading = true;
+    const pg = getPagination(type);
+    if (pg.isLoading) return;
+    pg.isLoading = true;
 
     if (!isLoadMore) {
-        state.pagination.page = 0;
-        state.pagination.hasMore = true;
+        pg.page = 0;
+        pg.hasMore = true;
     }
 
-    const from = state.pagination.page * state.pagination.limit;
-    const to = from + state.pagination.limit - 1;
+    const from = pg.page * pg.limit;
+    const to = from + pg.limit - 1;
+
+    if (state.searchQuery) {
+        const q = state.searchQuery.replace(/,/g, ' ').trim();
+        if (q) {
+            let searchType = type;
+            if (type === 'public') {
+                const f = state.plazaFilterType || 'all';
+                searchType = f === 'all' ? null : f;
+            }
+            try {
+                const { data, error } = await client.rpc('search_posts_fts', { 
+                    p_query: q, 
+                    p_type: searchType, 
+                    p_stock_id: type === 'stock' ? (stockName || null) : null, 
+                    p_limit: pg.limit, 
+                    p_offset: from 
+                });
+                pg.isLoading = false;
+                if (!error && Array.isArray(data)) {
+                    if (data.length < pg.limit) {
+                        pg.hasMore = false;
+                    } else {
+                        pg.page++;
+                    }
+                    let posts = data.map(p => ({
+                        ...p,
+                        profiles: p.nickname ? { nickname: p.nickname } : null
+                    }));
+                    const order = getSearchOrder(type);
+                    if (order === 'latest') {
+                        posts = posts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+                    }
+                    if (type === 'stock' && state.stockCategoryFilter && state.stockCategoryFilter !== 'all') {
+                        posts = posts.filter(p => getCategory(p) === state.stockCategoryFilter);
+                    }
+                    const blocked = state.relationships.blocks;
+                    const filtered = blocked.size ? posts.filter(p => !p.user_id || !blocked.has(p.user_id)) : posts;
+                    return filtered;
+                }
+            } catch {}
+        }
+    }
 
     let query = client.from('posts')
         .select(`*, profiles:user_id (nickname, post_count, comment_count, avatar_url)`) 
@@ -3372,21 +3638,24 @@ async function fetchPosts(type, stockName = null, isLoadMore = false) {
     }
     if (state.searchQuery) {
         const q = state.searchQuery.replace(/,/g, ' ').trim();
-        if (q) query = query.or(`title.ilike.%${q}%,content.ilike.%${q}%`);
+        if (q) {
+            if (type === 'stock') query = query.or(`title.ilike.%${q}%,content.ilike.%${q}%,stock_id.ilike.%${q}%`);
+            else query = query.or(`title.ilike.%${q}%,content.ilike.%${q}%`);
+        }
     }
 
     const { data, error } = await query;
-    state.pagination.isLoading = false;
+    pg.isLoading = false;
 
     if (error) {
         showToast('비급을 불러오는 중 문제가 발생했습니다.', 'error');
         return [];
     }
 
-    if (data.length < state.pagination.limit) {
-        state.pagination.hasMore = false;
+    if (data.length < pg.limit) {
+        pg.hasMore = false;
     } else {
-        state.pagination.page++;
+        pg.page++;
     }
     let posts = data || [];
     if (type === 'stock') {
@@ -3494,6 +3763,13 @@ async function renderStockRank(mode = 'best') {
             const { data } = await client.from('posts').select(`*, profiles:user_id (nickname)`).eq('id', id).single();
             if (data) openPostDetail(data);
         };
+        el.tabIndex = 0;
+        el.onkeydown = (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                el.click();
+            }
+        };
     });
 
     ['rank-best','rank-today','rank-week'].forEach(id => {
@@ -3522,11 +3798,13 @@ function createPostElement(post) {
     const cat = getCategory(post);
     const catHtml = cat ? `<span class="badge-cat ${cat} mr-1">${cat === 'notice' ? '공지' : cat === 'question' ? '질문' : '분석'}</span>` : '';
     const tagHtml = tag ? `<span class="badge-chip mr-2">${tag}</span>` : '';
+    const titleText = post.title || '(제목 없음)';
+    const titleHtml = state.searchQuery ? highlightText(titleText, state.searchQuery) : titleText;
     postEl.innerHTML = `
         <div class="flex items-center justify-between gap-3 w-full">
             <div class="min-w-0 flex items-center gap-2 w-full">
                 ${tagHtml}${catHtml}
-                <span class="text-[13px] text-gray-200 hover:text-yellow-400 line-clamp-1">${post.title || '(제목 없음)'}</span>
+                <span class="text-[13px] text-gray-200 hover:text-yellow-400 line-clamp-1">${titleHtml}</span>
             </div>
             <div class="ml-3 flex items-center gap-2 flex-shrink-0 text-[10px] text-gray-500 whitespace-nowrap">
                 <span>${timeStr}</span>
@@ -3761,9 +4039,14 @@ async function renderPosts(containerId, type, stockName = null) {
                     객잔 포함
                </label>`
             : '';
+        const order = getSearchOrder(type);
         searchDiv.innerHTML = `
-            <input type="text" placeholder="비급 제목 검색..." class="flex-grow bg-gray-800 border border-gray-700 text-white px-2 py-1.5 rounded-lg text-xs h-8" onkeydown="if(event.key==='Enter') handleSearch('${type}', '${containerId}', '${stockName || ''}', this.value)">
+            <input id="search-input-${type}" type="text" placeholder="비급 제목 검색..." class="flex-grow bg-gray-800 border border-gray-700 text-white px-2 py-1.5 rounded-lg text-xs h-8" onkeydown="if(event.key==='Enter') handleSearch('${type}', '${containerId}', '${stockName || ''}', this.value)">
             <button onclick="handleSearch('${type}', '${containerId}', '${stockName || ''}', this.previousElementSibling.value)" class="bg-gray-700 text-white px-3 py-1.5 rounded-lg text-xs h-8 hover:bg-gray-600">검색</button>
+            <select class="bg-gray-800 border border-gray-700 text-white px-2 py-1.5 rounded-lg text-xs h-8" onchange="setSearchOrderUI('${type}','${containerId}','${stockName || ''}', this.value)">
+                <option value="rank" ${order === 'rank' ? 'selected' : ''}>관련도</option>
+                <option value="latest" ${order === 'latest' ? 'selected' : ''}>최신</option>
+            </select>
             ${toggleHtml}
         `;
         container.parentNode.insertBefore(searchDiv, container);
@@ -3789,7 +4072,7 @@ async function renderPosts(containerId, type, stockName = null) {
             right.className = 'flex items-center gap-2';
             // Move search elements into right container
             Array.from(searchDiv.childNodes).forEach(n => {
-                if (n.tagName === 'INPUT' || n.tagName === 'BUTTON') right.appendChild(n);
+                if (n.tagName === 'INPUT' || n.tagName === 'BUTTON' || n.tagName === 'SELECT') right.appendChild(n);
             });
             searchDiv.innerHTML = '';
             searchDiv.appendChild(left);
@@ -3821,6 +4104,7 @@ async function renderPosts(containerId, type, stockName = null) {
     state.lastRenderedPosts = posts;
 
     renderLoadMoreButton(container, type, stockName);
+    setupInfiniteScroll(container, type, stockName);
 }
 
 window.handleSearch = async function(type, containerId, stockName, query) {
@@ -3842,14 +4126,23 @@ window.handleSearch = async function(type, containerId, stockName, query) {
     container.appendChild(fragment);
 
     renderLoadMoreButton(container, type, stockName || null);
+    setupInfiniteScroll(container, type, stockName || null);
 
     if (type === 'public') loadRecommended();
+}
+window.setSearchOrderUI = function(type, containerId, stockName, order) {
+    setSearchOrder(type, order);
+    const input = document.getElementById(`search-input-${type}`);
+    const q = (input?.value || '').trim();
+    if (q) handleSearch(type, containerId, stockName || null, q);
+    else renderPosts(containerId, type, stockName || null);
 }
 window.toggleIncludeSecretPlaza = function(checked) {
     state.includeSecretInPlaza = !!checked;
     try { localStorage.setItem('include_secret_plaza', JSON.stringify(state.includeSecretInPlaza)); } catch {}
     state.searchQuery = '';
     renderPosts('posts-list-public', 'public');
+    setupRealtimePostsForView();
 }
 window.setPlazaFilter = function(val) {
     state.plazaFilterType = val;
@@ -3862,13 +4155,15 @@ window.setPlazaFilter = function(val) {
         });
     }
     renderPosts('posts-list-public', 'public');
+    setupRealtimePostsForView();
 }
 
 function renderLoadMoreButton(container, type, stockName) {
     const existingBtn = container.nextElementSibling;
     if (existingBtn && existingBtn.id === 'load-more-btn') existingBtn.remove();
 
-    if (state.pagination.hasMore) {
+    const pg = getPagination(type);
+    if (pg.hasMore) {
         const btn = document.createElement('button');
         btn.id = 'load-more-btn';
         btn.className = 'w-full py-3 mt-4 text-sm text-gray-400 bg-gray-800/50 rounded-lg hover:bg-gray-800 hover:text-white transition';
@@ -3881,11 +4176,38 @@ function renderLoadMoreButton(container, type, stockName) {
                 posts.forEach(post => fragment.appendChild(createPostElement(post)));
                 container.appendChild(fragment);
             }
-            if (!state.pagination.hasMore) btn.remove();
+            if (!pg.hasMore) btn.remove();
             else btn.innerText = '비급 더 찾기';
         };
         container.parentNode.appendChild(btn);
     }
+}
+function setupInfiniteScroll(container, type, stockName) {
+    const key = `${container.id}_${type}`;
+    const prev = state.infiniteObservers?.[key];
+    if (prev) {
+        try { prev.observer.disconnect(); } catch {}
+        if (prev.sentinel && prev.sentinel.parentNode) prev.sentinel.parentNode.removeChild(prev.sentinel);
+    }
+    const sentinel = document.createElement('div');
+    sentinel.className = 'h-6 w-full';
+    container.parentNode.appendChild(sentinel);
+    const observer = new IntersectionObserver(async (entries) => {
+        const entry = entries[0];
+        if (!entry.isIntersecting) return;
+        const pg = getPagination(type);
+        if (!pg.hasMore || pg.isLoading) return;
+        const posts = await fetchPosts(type, stockName, true);
+        if (posts.length > 0) {
+            const fragment = document.createDocumentFragment();
+            posts.forEach(post => fragment.appendChild(createPostElement(post)));
+            container.appendChild(fragment);
+        }
+        renderLoadMoreButton(container, type, stockName);
+    }, { root: null, rootMargin: '200px', threshold: 0.1 });
+    observer.observe(sentinel);
+    if (!state.infiniteObservers) state.infiniteObservers = {};
+    state.infiniteObservers[key] = { observer, sentinel };
 }
 
 window.openPostDetail = async function(post) {
@@ -4678,7 +5000,8 @@ async function submitInlineReply(parentId) {
             try { console.warn('인라인 답글 등록 오류:', error); } catch {}
             const m = (error.message || '').toLowerCase();
             if (m.includes('row level security') || m.includes('with check')) {
-                showToast('익명 전서 일일 제한을 초과했소.', 'error');
+                showToast('전서 제한에 걸렸소. 잠시 후 다시 시도하오.', 'error');
+                logRateLimit('comment_insert', error.message || 'rls');
             } else {
                 showToast(`전서 등록에 차질이 생겼소: ${error.message || '알 수 없는 오류'}`, 'error');
             }
@@ -4718,7 +5041,8 @@ async function addComment() {
         try { console.warn('댓글 등록 오류:', error); } catch {}
         const m = (error.message || '').toLowerCase();
         if (m.includes('row level security') || m.includes('with check')) {
-            showToast('익명 전서 일일 제한을 초과했소.', 'error');
+            showToast('전서 제한에 걸렸소. 잠시 후 다시 시도하오.', 'error');
+            logRateLimit('comment_insert', error.message || 'rls');
         } else {
             showToast(`전서 등록에 차질이 생겼소: ${error.message || '알 수 없는 오류'}`, 'error');
         }
@@ -5246,34 +5570,9 @@ function attachRealtimeDiagnostics() {
 }
 
 function setupGlobalRealtime() {
-    // 1. Posts (모든 게시글 변경 감지)
-    ensureChannel('global_posts', () => 
-        client.channel('public:posts')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, payload => {
-                handleNewPostRealtime(payload.new);
-            })
-            .subscribe()
-    );
+    setupRealtimePostsForView();
 
-    // 2. Messages (나에게 온 쪽지)
-    ensureChannel('global_messages', () =>
-        client.channel('public:messages')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-                if (state.user && payload.new.receiver_id === state.user.id) {
-                    if (!state.profile || state.profile.receive_message_noti !== false) {
-                        showToast(`💌 새로운 밀서가 당도했소!`, 'info');
-                    }
-                    checkUnreadMessages();
-                    const msgList = document.getElementById('message-list');
-                    if (!msgList.classList.contains('hidden') && !document.getElementById('messageModal').classList.contains('hidden')) {
-                         loadMessageList();
-                    }
-                }
-            })
-            .subscribe()
-    );
-
-    // 3. Stock Tags (새로운 종목 추가)
+    // 2. Stock Tags (새로운 종목 추가)
     ensureChannel('global_stocks', () =>
         client.channel('public:stock_tags')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'stock_tags' }, payload => {
@@ -5284,6 +5583,50 @@ function setupGlobalRealtime() {
             })
             .subscribe()
     );
+}
+function setupRealtimePostsForView() {
+    const view = getCurrentViewType();
+    ['rt_posts_public','rt_posts_secret','rt_posts_stock'].forEach(k => {
+        if (state.realtimeChannels[k]) {
+            client.removeChannel(state.realtimeChannels[k]);
+            delete state.realtimeChannels[k];
+        }
+    });
+    if (view === 'public') {
+        ensureChannel('rt_posts_public', () =>
+            client.channel('public:posts')
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts', filter: 'type=eq.public' }, payload => {
+                    handleNewPostRealtime(payload.new);
+                })
+                .subscribe()
+        );
+        if (state.includeSecretInPlaza) {
+            ensureChannel('rt_posts_secret', () =>
+                client.channel('public:posts')
+                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts', filter: 'type=eq.secret' }, payload => {
+                        handleNewPostRealtime(payload.new);
+                    })
+                    .subscribe()
+            );
+        }
+    } else if (view === 'secret') {
+        ensureChannel('rt_posts_secret', () =>
+            client.channel('public:posts')
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts', filter: 'type=eq.secret' }, payload => {
+                    handleNewPostRealtime(payload.new);
+                })
+                .subscribe()
+        );
+    } else if (view === 'stock') {
+        const filter = state.currentStockName ? `type=eq.stock&stock_id=eq.${state.currentStockName}` : 'type=eq.stock';
+        ensureChannel('rt_posts_stock', () =>
+            client.channel('public:posts')
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts', filter }, payload => {
+                    handleNewPostRealtime(payload.new);
+                })
+                .subscribe()
+        );
+    }
 }
 
 // ------------------------------------------------------------------
@@ -5482,6 +5825,9 @@ async function handleNewPostRealtime(newPost) {
                     container.insertBefore(newEl, container.firstChild);
                 } else {
                     container.appendChild(newEl);
+                }
+                while (container.children.length > 30) {
+                    container.removeChild(container.lastChild);
                 }
                 setTimeout(() => newEl.classList.remove('animate-pulse'), 2000);
             }
@@ -5773,7 +6119,28 @@ async function checkUnreadNotifications() {
 }
 
 function setupRealtimeMessages() {
+    if (!state.user) {
+        if (state.realtimeChannels['rt_messages']) {
+            client.removeChannel(state.realtimeChannels['rt_messages']);
+            delete state.realtimeChannels['rt_messages'];
+        }
+        return;
+    }
     checkUnreadMessages();
+    ensureChannel('rt_messages', () =>
+        client.channel('public:messages')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${state.user.id}` }, payload => {
+                if (!state.profile || state.profile.receive_message_noti !== false) {
+                    showToast(`💌 새로운 밀서가 당도했소!`, 'info');
+                }
+                checkUnreadMessages();
+                const msgList = document.getElementById('message-list');
+                if (!msgList.classList.contains('hidden') && !document.getElementById('messageModal').classList.contains('hidden')) {
+                     loadMessageList();
+                }
+            })
+            .subscribe()
+    );
 }
 
 let notificationAutoCloseTimer = null;
@@ -5861,11 +6228,15 @@ window.switchAdminTab = function(tab) {
     document.getElementById('admin-reports-area').classList.add('hidden');
     document.getElementById('admin-users-area').classList.add('hidden');
     document.getElementById('admin-broadcast-area').classList.add('hidden');
+    const rateArea = document.getElementById('admin-rate-limits-area');
+    if (rateArea) rateArea.classList.add('hidden');
     const depArea = document.getElementById('admin-deposits-area');
     if (depArea) depArea.classList.add('hidden');
     document.getElementById('admin-tab-reports').classList.remove('bg-yellow-700','text-black');
     document.getElementById('admin-tab-users').classList.remove('bg-yellow-700','text-black');
     document.getElementById('admin-tab-broadcast').classList.remove('bg-yellow-700','text-black');
+    const rateTab = document.getElementById('admin-tab-rate-limits');
+    if (rateTab) rateTab.classList.remove('bg-yellow-700','text-black');
     const depTab = document.getElementById('admin-tab-deposits');
     if (depTab) depTab.classList.remove('bg-yellow-700','text-black');
     if (state.realtimeChannels['admin_deposits'] && tab !== 'deposits') {
@@ -5893,6 +6264,10 @@ window.switchAdminTab = function(tab) {
                 .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'deposit_requests' }, () => loadAdminDeposits())
                 .subscribe()
         );
+    } else if (tab === 'rate-limits') {
+        if (rateArea) rateArea.classList.remove('hidden');
+        if (rateTab) rateTab.classList.add('bg-yellow-700','text-black');
+        loadAdminRateLimits();
     }
 }
 
@@ -5920,6 +6295,33 @@ async function loadAdminReports() {
                 <button onclick="updateReportStatus('${r.id}','resolved')" class="px-2 py-1 text-xs bg-green-700 text-white rounded">처리</button>
                 <button onclick="updateReportStatus('${r.id}','dismissed')" class="px-2 py-1 text-xs bg-gray-700 text-white rounded">기각</button>
             </div>
+        </div>
+    `).join('');
+}
+
+async function loadAdminRateLimits() {
+    const list = document.getElementById('admin-rate-limits-list');
+    if (!list) return;
+    list.innerHTML = '<div class="text-center text-gray-500 mt-4 text-xs">레이트 기록을 불러오는 중...</div>';
+    const { data, error } = await client.from('rate_limit_logs')
+        .select('id,user_id,guest_device_id,action,reason,created_at,profiles:user_id (nickname)')
+        .order('created_at', { ascending: false })
+        .limit(100);
+    if (error) {
+        list.innerHTML = '<div class="text-center text-gray-500 mt-6 text-xs">불러오기에 차질이 생겼소.</div>';
+        return;
+    }
+    const rows = data || [];
+    if (!rows.length) {
+        list.innerHTML = '<div class="text-center text-gray-500 mt-6 text-xs">기록이 없소.</div>';
+        return;
+    }
+    list.innerHTML = rows.map(r => `
+        <div class="p-3 rounded-lg border border-gray-800 bg-gray-900/40">
+            <div class="text-xs text-gray-400 mb-1">${new Date(r.created_at).toLocaleString()}</div>
+            <div class="text-sm text-white mb-1">${r.action}</div>
+            <div class="text-[10px] text-gray-500">${r.profiles?.nickname || r.user_id || r.guest_device_id || '알 수 없음'}</div>
+            <div class="text-[10px] text-gray-500">${r.reason || ''}</div>
         </div>
     `).join('');
 }

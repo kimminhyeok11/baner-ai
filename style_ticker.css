@@ -20,7 +20,7 @@
   animation-iteration-count: infinite;
   animation-timing-function: linear;
   animation-name: ticker;
-  animation-duration: 25s;
+  animation-duration: 50s;
 }
 .ticker__item {
   display: inline-block;

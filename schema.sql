@@ -48,6 +48,15 @@ begin
   where p.id is null;
 end $$;
 
+create table if not exists public.schema_versions (
+  id bigserial primary key,
+  version text not null,
+  applied_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+insert into public.schema_versions (version)
+select 'init'
+where not exists (select 1 from public.schema_versions where version = 'init');
+
 create table if not exists public.stock_tags (
   id uuid default gen_random_uuid() primary key,
   name text unique not null,
@@ -84,20 +93,96 @@ create table if not exists public.posts (
 
 alter table public.posts enable row level security;
 
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'posts'
+      and column_name = 'guest_device_id'
+  ) then
+    alter table public.posts add column guest_device_id text;
+  end if;
+end $$;
+
+create or replace function public.can_insert_post(p_user_id uuid, p_guest_device_id text)
+returns boolean as $$
+declare
+  last_ts timestamp with time zone;
+  cnt integer;
+begin
+  if p_user_id is not null then
+    select max(created_at) into last_ts
+    from public.posts
+    where user_id = p_user_id;
+    if last_ts is not null and now() - last_ts < interval '15 seconds' then
+      return false;
+    end if;
+    return true;
+  end if;
+  if p_guest_device_id is null then
+    return false;
+  end if;
+  select max(created_at) into last_ts
+  from public.posts
+  where user_id is null
+    and guest_device_id = p_guest_device_id;
+  if last_ts is not null and now() - last_ts < interval '30 seconds' then
+    return false;
+  end if;
+  select count(*) into cnt
+  from public.posts
+  where user_id is null
+    and guest_device_id = p_guest_device_id
+    and created_at::date = timezone('utc', now())::date;
+  return cnt < 3;
+end;
+$$ language plpgsql stable set search_path = '';
+
+create or replace function public.is_clean_text(p_text text)
+returns boolean as $$
+declare
+  v text;
+  w text;
+  bad_words text[] := array['시발','씨발','ㅅㅂ','병신','좆','섹스','카지노','토토','도박','먹튀','야동','보지','자지'];
+begin
+  if p_text is null then
+    return true;
+  end if;
+  v := lower(p_text);
+  foreach w in array bad_words loop
+    if v like '%' || w || '%' then
+      return false;
+    end if;
+  end loop;
+  return true;
+end;
+$$ language plpgsql stable set search_path = '';
+
 drop policy if exists "Posts are viewable by everyone" on public.posts;
 create policy "Posts are viewable by everyone"
   on posts for select
-  using ( true );
+  using (
+    auth.uid() is null
+    or user_id is null
+    or not exists (
+      select 1 from public.user_relationships ur
+      where ur.user_id = auth.uid()
+        and ur.target_id = posts.user_id
+        and ur.type in ('block','mute')
+    )
+  );
 
 drop policy if exists "Users can insert posts" on public.posts;
 create policy "Users can insert posts"
   on posts for insert
-  with check ( true ); 
+  with check ( public.can_insert_post(user_id, guest_device_id) and public.is_clean_text(title) and public.is_clean_text(content) ); 
 
 drop policy if exists "Users can update own posts" on public.posts;
 create policy "Users can update own posts"
   on posts for update
-  using ( auth.uid() = user_id );
+  using ( auth.uid() = user_id )
+  with check ( public.is_clean_text(title) and public.is_clean_text(content) );
 
 drop policy if exists "Users can delete own posts" on public.posts;
 create policy "Users can delete own posts"
@@ -121,12 +206,26 @@ alter table public.comments enable row level security;
 create or replace function public.can_insert_comment(p_user_id uuid, p_guest_device_id text)
 returns boolean as $$
 declare
+  last_ts timestamp with time zone;
   cnt integer;
 begin
   if p_user_id is not null then
+    select max(created_at) into last_ts
+    from public.comments
+    where user_id = p_user_id;
+    if last_ts is not null and now() - last_ts < interval '10 seconds' then
+      return false;
+    end if;
     return true;
   end if;
   if p_guest_device_id is null then
+    return false;
+  end if;
+  select max(created_at) into last_ts
+  from public.comments
+  where user_id is null
+    and guest_device_id = p_guest_device_id;
+  if last_ts is not null and now() - last_ts < interval '20 seconds' then
     return false;
   end if;
   select count(*) into cnt
@@ -137,6 +236,8 @@ begin
   return cnt < 10;
 end;
 $$ language plpgsql stable set search_path = '';
+
+drop function if exists public.can_insert_post(uuid, text);
 
 -- Ensure guest_device_id column exists (for older deployments)
 do $$
@@ -159,7 +260,7 @@ create policy "Comments are viewable by everyone"
 drop policy if exists "Users can insert comments" on public.comments;
 create policy "Users can insert comments"
   on comments for insert
-  with check ( public.can_insert_comment(user_id, guest_device_id) );
+  with check ( public.can_insert_comment(user_id, guest_device_id) and public.is_clean_text(content) );
 
 
 create table if not exists public.chat_messages (
@@ -351,6 +452,40 @@ drop policy if exists "Admins can update reports" on public.reports;
 create policy "Admins can update reports"
   on reports for update
   using ( auth.uid() in (select id from public.profiles where role = 'admin') );
+
+create table if not exists public.rate_limit_logs (
+  id bigserial primary key,
+  user_id uuid references public.profiles(id) on delete set null,
+  guest_device_id text,
+  action text not null,
+  reason text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+alter table public.rate_limit_logs enable row level security;
+drop policy if exists "Admins can view rate limits" on public.rate_limit_logs;
+create policy "Admins can view rate limits"
+  on rate_limit_logs for select
+  using ( auth.uid() in (select id from public.profiles where role = 'admin') );
+drop policy if exists "Anyone can log rate limits" on public.rate_limit_logs;
+create policy "Anyone can log rate limits"
+  on rate_limit_logs for insert
+  with check ( true );
+create index if not exists idx_rate_limit_logs_created on public.rate_limit_logs(created_at desc);
+create index if not exists idx_rate_limit_logs_action on public.rate_limit_logs(action, created_at desc);
+
+drop function if exists public.log_rate_limit(text, text, uuid, text);
+create or replace function public.log_rate_limit(p_action text, p_reason text, p_user_id uuid, p_guest_device_id text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.rate_limit_logs (user_id, guest_device_id, action, reason)
+  values (p_user_id, p_guest_device_id, coalesce(p_action, 'unknown'), p_reason);
+end;
+$$;
+grant execute on function public.log_rate_limit(text, text, uuid, text) to anon, authenticated;
 
 create table if not exists public.notifications (
   id uuid default gen_random_uuid() primary key,
@@ -568,8 +703,6 @@ create policy "Users can delete own predictions"
   using ( auth.uid() = user_id );
 create index if not exists idx_predictions_created on public.predictions(created_at);
 create index if not exists idx_predictions_stock_dir on public.predictions(stock_id, direction);
-create unique index if not exists uniq_predictions_user_stock_month 
-  on public.predictions (user_id, stock_id, date_trunc('month', created_at));
 create index if not exists idx_posts_type_created on public.posts(type, created_at);
 create index if not exists idx_posts_stock_created on public.posts(type, stock_id, created_at);
 create index if not exists idx_posts_stock_like on public.posts(type, stock_id, like_count);
@@ -582,9 +715,6 @@ create index if not exists idx_notifications_user_type_created on public.notific
 create index if not exists idx_messages_receiver_created on public.messages(receiver_id, created_at);
 create index if not exists idx_messages_sender_created on public.messages(sender_id, created_at);
 
-create extension if not exists pg_trgm;
-create index if not exists idx_posts_title_trgm on public.posts using gin (title gin_trgm_ops);
-create index if not exists idx_posts_content_trgm on public.posts using gin (content gin_trgm_ops);
 create index if not exists idx_posts_like_created on public.posts(like_count, created_at);
 create index if not exists idx_notifications_user_isread on public.notifications(user_id, is_read);
 create index if not exists idx_messages_receiver_isread on public.messages(receiver_id, is_read);
@@ -638,7 +768,6 @@ begin
   end if;
 end $$;
 create index if not exists idx_journal_public_strategy on public.journal_entries(is_public, strategy);
-create index if not exists idx_journal_public_tags on public.journal_entries using gin (tags gin_trgm_ops);
 
 alter view if exists public.predictions_monthly set (security_invoker = true);
 
@@ -679,7 +808,6 @@ create index if not exists idx_post_clicks_user_post on public.post_clicks(user_
 create index if not exists idx_post_clicks_post_created on public.post_clicks(post_id, created_at);
 
 create index if not exists idx_posts_user_created on public.posts(user_id, created_at);
-create index if not exists idx_posts_content_trgm on public.posts using gin (content gin_trgm_ops);
 
 create table if not exists public.sponsor_slots (
   id uuid default gen_random_uuid() primary key,
@@ -729,6 +857,13 @@ create index if not exists idx_materials_active_created on public.materials(is_a
 create table if not exists public.material_contents (
   material_id uuid references public.materials(id) on delete cascade primary key,
   content text not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+create table if not exists public.material_purchases (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  material_id uuid references public.materials(id) on delete cascade not null,
+  status text not null default 'paid',
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 alter table public.material_contents enable row level security;
@@ -793,8 +928,8 @@ create policy "Deposit requests admin view"
   on public.deposit_requests for select
   using ( auth.uid() in (select id from public.profiles where role = 'admin') );
 drop policy if exists "Deposit requests admin update" on public.deposit_requests;
-create policy "Admins can update reports"
-  on reports for update
+create policy "Deposit requests admin update"
+  on public.deposit_requests for update
   using ( auth.uid() in (select id from public.profiles where role = 'admin') );
 create index if not exists idx_deposit_status_created on public.deposit_requests(status, created_at);
 create index if not exists idx_deposit_user_created on public.deposit_requests(user_id, created_at);
@@ -833,6 +968,24 @@ begin
   end if;
 end $$;
 
+create table if not exists public.post_feedbacks (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  post_id uuid references public.posts(id) on delete cascade not null,
+  type text not null check (type in ('not_interested')),
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+alter table public.post_feedbacks enable row level security;
+drop policy if exists "Feedbacks insert by owner" on public.post_feedbacks;
+create policy "Feedbacks insert by owner"
+  on public.post_feedbacks for insert
+  with check ( auth.uid() = user_id );
+drop policy if exists "Feedbacks view by owner" on public.post_feedbacks;
+create policy "Feedbacks view by owner"
+  on public.post_feedbacks for select
+  using ( auth.uid() = user_id );
+create index if not exists idx_post_feedbacks_user_post on public.post_feedbacks(user_id, post_id);
+
 create or replace function public.get_recommended_posts(p_user uuid, p_limit int default 10)
 returns table (
   id uuid,
@@ -864,18 +1017,6 @@ as $$
           select 1 from public.user_relationships ur 
           where ur.user_id = p_user and ur.target_id = p.user_id and ur.type = 'follow'
         ) then 0.8 else 0 end
-      + 0.6 * greatest(
-          coalesce((
-            select max(similarity(p.title, lp.title))
-            from public.posts lp
-            where lp.id in (select post_id from public.post_likes where user_id = p_user)
-          ), 0),
-          coalesce((
-            select max(similarity(p.content, lc.content))
-            from public.posts lc
-            where lc.id in (select post_id from public.post_likes where user_id = p_user)
-          ), 0)
-        )
       + 0.7 * (least(coalesce((select count(*) from public.comments c where c.post_id = p.id),0),5) / 5.0)
       as score
     from public.posts p
@@ -906,24 +1047,6 @@ as $$
   limit p_limit;
 $$;
 
-create table if not exists public.post_feedbacks (
-  id uuid default gen_random_uuid() primary key,
-  user_id uuid references public.profiles(id) on delete cascade not null,
-  post_id uuid references public.posts(id) on delete cascade not null,
-  type text not null check (type in ('not_interested')),
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-alter table public.post_feedbacks enable row level security;
-drop policy if exists "Feedbacks insert by owner" on public.post_feedbacks;
-create policy "Feedbacks insert by owner"
-  on public.post_feedbacks for insert
-  with check ( auth.uid() = user_id );
-drop policy if exists "Feedbacks view by owner" on public.post_feedbacks;
-create policy "Feedbacks view by owner"
-  on public.post_feedbacks for select
-  using ( auth.uid() = user_id );
-create index if not exists idx_post_feedbacks_user_post on public.post_feedbacks(user_id, post_id);
-
 create table if not exists public.journal_monthly_goals (
   user_id uuid references public.profiles(id) on delete cascade not null,
   ym text not null,
@@ -945,3 +1068,177 @@ create policy "Goals update by owner"
   on journal_monthly_goals for update
   using ( auth.uid() = user_id );
 create index if not exists idx_goals_user_ym on public.journal_monthly_goals(user_id, ym);
+
+alter table if exists public.posts
+  add column if not exists category text check (category in ('notice','question','analysis'));
+
+create index if not exists idx_posts_category on public.posts(category);
+create index if not exists idx_posts_like_recent on public.posts(type, created_at desc, like_count);
+create index if not exists idx_posts_views_recent on public.posts(type, created_at desc, view_count);
+
+create or replace function public.backfill_post_categories()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  update public.posts
+  set category = 'notice'
+  where category is null and (title ilike '[공지]%' or title ilike '공지:%' or title ilike '공지 %');
+
+  update public.posts
+  set category = 'question'
+  where category is null and (title ilike '[질문]%' or title ilike '질문:%' or title ilike '질문 %' or title ilike '%?');
+
+  update public.posts
+  set category = 'analysis'
+  where category is null and (title ilike '[분석]%' or title ilike '분석:%' or title ilike '분석 %');
+end;
+$$;
+
+grant execute on function public.backfill_post_categories() to authenticated;
+
+create or replace function public.get_top_posts(p_hours int default 24, p_type text default 'stock', p_limit int default 20)
+returns table (id uuid, title text, stock_id text, like_count int, view_count int, created_at timestamptz, category text)
+language sql
+stable
+set search_path = ''
+as $$
+  with base as (
+    select id, title, stock_id, like_count, view_count, created_at, category
+    from public.posts
+    where type = p_type
+      and created_at >= now() - make_interval(hours => p_hours)
+  ),
+  scored as (
+    select *,
+      ln(1 + coalesce(like_count,0)) * 2
+      + ln(1 + coalesce(view_count,0)) as score
+    from base
+  )
+  select id, title, stock_id, like_count, view_count, created_at, category
+  from scored
+  order by score desc, created_at desc
+  limit p_limit;
+$$;
+
+create index if not exists idx_posts_fts on public.posts using gin (
+  to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(content,''))
+);
+
+create or replace function public.search_posts_fts(
+  p_query text,
+  p_type text default null,
+  p_stock_id text default null,
+  p_limit int default 20,
+  p_offset int default 0
+)
+returns table (
+  id uuid,
+  user_id uuid,
+  guest_nickname text,
+  title text,
+  content text,
+  type text,
+  stock_id text,
+  mugong_id text,
+  view_count int,
+  like_count int,
+  created_at timestamptz,
+  category text,
+  nickname text
+)
+language sql
+stable
+set search_path = ''
+as $$
+  select
+    p.id,
+    p.user_id,
+    p.guest_nickname,
+    p.title,
+    p.content,
+    p.type,
+    p.stock_id,
+    p.mugong_id,
+    p.view_count,
+    p.like_count,
+    p.created_at,
+    p.category,
+    pr.nickname
+  from public.posts p
+  left join public.profiles pr on pr.id = p.user_id
+  where (p_type is null or p.type = p_type)
+    and (p_stock_id is null or p.stock_id = p_stock_id)
+    and to_tsvector('simple', coalesce(p.title,'') || ' ' || coalesce(p.content,'')) @@ websearch_to_tsquery('simple', p_query)
+  order by
+    ts_rank(to_tsvector('simple', coalesce(p.title,'') || ' ' || coalesce(p.content,'')), websearch_to_tsquery('simple', p_query)) desc nulls last,
+    p.created_at desc
+  limit p_limit offset p_offset;
+$$;
+
+grant execute on function public.search_posts_fts(text, text, text, int, int) to anon, authenticated;
+
+grant execute on function public.get_top_posts(int, text, int) to anon, authenticated;
+
+create table if not exists public.stocks (
+  code text primary key,
+  name text not null,
+  market text not null default 'KOSPI',
+  keywords text,
+  is_active boolean not null default true,
+  created_at timestamp with time zone not null default now()
+);
+
+create index if not exists idx_stocks_name on public.stocks using btree (name);
+create index if not exists idx_stocks_market on public.stocks(market);
+
+create index if not exists idx_posts_stock_recent on public.posts(type, stock_id, created_at desc);
+
+create or replace function public.get_hot_stock_rooms(p_hours int default 24, p_limit int default 12)
+returns table (stock_id text, post_count bigint)
+language sql
+stable
+set search_path = ''
+as $$
+  select stock_id, count(*) as post_count
+  from public.posts
+  where type = 'stock'
+    and created_at >= now() - make_interval(hours => p_hours)
+    and stock_id is not null
+  group by stock_id
+  order by count(*) desc
+  limit p_limit;
+$$;
+
+grant execute on function public.get_hot_stock_rooms(int, int) to anon, authenticated;
+
+create or replace function public.search_stocks(p_query text, p_limit int default 10)
+returns table (code text, name text, market text, score real)
+language sql
+stable
+set search_path = ''
+as $$
+  with q as (
+    select trim(p_query) as q
+  )
+  select s.code, s.name, s.market,
+         case
+           when s.code ilike (select q from q) then 3.0
+           when s.name ilike '%' || (select q from q) || '%' then 2.0
+           when coalesce(s.keywords,'') ilike '%' || (select q from q) || '%' then 1.0
+           else 0.0
+         end as score
+  from public.stocks s
+  where s.is_active
+    and (
+      s.name ilike '%' || (select q from q) || '%' or
+      s.code ilike '%' || (select q from q) || '%' or
+      coalesce(s.keywords,'') ilike '%' || (select q from q) || '%'
+    )
+  order by score desc, s.market, s.name
+  limit p_limit;
+$$;
+
+grant execute on function public.search_stocks(text, int) to anon, authenticated;

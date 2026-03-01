@@ -1085,6 +1085,7 @@
                 <button id="admin-tab-users" onclick="switchAdminTab('users')" class="px-3 py-1.5 text-xs bg-gray-800 text-gray-300 rounded-full border border-gray-700">문도</button>
                 <button id="admin-tab-broadcast" onclick="switchAdminTab('broadcast')" class="px-3 py-1.5 text-xs bg-gray-800 text-gray-300 rounded-full border border-gray-700">공지</button>
                 <button id="admin-tab-deposits" onclick="switchAdminTab('deposits')" class="px-3 py-1.5 text-xs bg-gray-800 text-gray-300 rounded-full border border-gray-700">입금</button>
+                <button id="admin-tab-rate-limits" onclick="switchAdminTab('rate-limits')" class="px-3 py-1.5 text-xs bg-gray-800 text-gray-300 rounded-full border border-gray-700">레이트</button>
             </div>
             <div class="flex-grow overflow-y-auto p-3 space-y-2">
                 <div id="admin-reports-area" class="space-y-2">
@@ -1106,6 +1107,12 @@
                         <button onclick="loadAdminDeposits()" class="text-xs px-2 py-1 bg-gray-800 text-gray-300 rounded">새로고침</button>
                     </div>
                     <div id="admin-deposits-list" class="space-y-2"></div>
+                </div>
+                <div id="admin-rate-limits-area" class="hidden space-y-2">
+                    <div class="flex items-center gap-2 mb-2">
+                        <button onclick="loadAdminRateLimits()" class="text-xs px-2 py-1 bg-gray-800 text-gray-300 rounded">새로고침</button>
+                    </div>
+                    <div id="admin-rate-limits-list" class="space-y-2"></div>
                 </div>
             </div>
         </div>
