@@ -527,6 +527,33 @@ async function fetchNewsJson(query) {
             return Array.isArray(data) ? data : (data.items || []);
         } catch {}
     }
+    // RSS direct fallback via r.jina.ai (CORS-friendly)
+    try {
+        const q = query && query.trim() ? query.trim() : '코스피 OR 코스닥 OR 증시';
+        const rss = 'http://news.google.com/rss/search?hl=ko&gl=KR&ceid=KR:ko&q=' + encodeURIComponent(q);
+        const proxyUrl = 'https://r.jina.ai/http://' + rss;
+        const res = await fetch(proxyUrl, { mode: 'cors' });
+        if (!res.ok) return [];
+        const xml = await res.text();
+        const items = [];
+        const re = /<item>([\s\S]*?)<\/item>/g;
+        let m;
+        while ((m = re.exec(xml)) !== null) {
+            const item = m[1];
+            const pick = (tag) => {
+                const mm = item.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`));
+                const v = mm ? mm[1] : '';
+                return v.replace(/<!\\[CDATA\\[(.*?)\\]\\]>/g, '$1').trim();
+            };
+            items.push({
+                title: pick('title'),
+                link: pick('link'),
+                source: pick('source'),
+                published_at: pick('pubDate')
+            });
+        }
+        return items;
+    } catch {}
     return [];
 }
 async function loadNews() {
