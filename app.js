@@ -15,6 +15,12 @@ const state = {
     isEditing: false,
     currentStockName: '삼성전자', 
     stockTags: [], 
+    stocksMaster: [],
+    codeToName: {},
+    stockSortMode: 'latest',
+    hotRoomsCache: { ts: 0, html: '' },
+    stockCategoryFilter: 'all',
+    recentStocks: [],
     realtimeChannels: {},
     guestName: `무협객_${Math.floor(Math.random() * 1000)}`,
     replyToCommentId: null, // 대댓글 대상 ID
@@ -75,6 +81,19 @@ try {
     const savedProxy = localStorage.getItem('link_preview_proxy');
     if (savedProxy) window.LINK_PREVIEW_PROXY = savedProxy;
 } catch {}
+try {
+    const rs = JSON.parse(localStorage.getItem('recent_stocks') || '[]');
+    if (Array.isArray(rs)) state.recentStocks = rs.slice(0, 8);
+} catch {}
+try {
+    const sm = JSON.parse(localStorage.getItem('stocks_master') || '[]');
+    if (Array.isArray(sm) && sm.length) {
+        state.stocksMaster = sm;
+        const map = {};
+        sm.forEach(s => { if (s.code && s.name) map[String(s.code).toUpperCase()] = s.name; });
+        state.codeToName = map;
+    }
+} catch {}
 const LEVEL_NAMES = ['입문자', '초학자', '시세견습', '기문초해', '자본내공가', '강호시세객', '전략비급사', '시장현경', '초절정투객', '절세투자고수', '금룡장문'];
 
 const MU_GONG_TYPES = [
@@ -88,6 +107,99 @@ const BANK_INFO = {
     owner_name: '김민혁',
     message: '입금 후 아래 양식으로 확인 요청하시오.'
 };
+
+// SEO: Update Meta Tags
+function updateMetaTagsForView(viewId, data = null) {
+    let title = '강호 광장 - 투자 커뮤니티';
+    let description = '한국 무림 세계관으로 즐기는 주식, 코인 투자 커뮤니티. 천금문에서 비급을 공유하시오.';
+    let url = window.location.href;
+
+    if (viewId === 'stock-board') {
+        title = '종목 비급 - 실시간 종목 토론';
+        description = '삼성전자, 에코프로 등 인기 종목에 대한 고수들의 분석과 토론.';
+    } else if (viewId === 'secret-inn') {
+        title = '암천 객잔 - 자유 투자 수다';
+        description = '투자에 지친 영혼들이 쉬어가는 곳. 자유로운 주식 이야기.';
+    } else if (viewId === 'post-detail' && data) {
+        title = `${data.title} - 강호 광장`;
+        description = data.content ? data.content.substring(0, 150).replace(/\n/g, ' ') : description;
+    }
+
+    document.title = title;
+    
+    // Update Open Graph tags
+    const setMeta = (property, content) => {
+        let element = document.querySelector(`meta[property="${property}"]`);
+        if (!element) {
+            element = document.createElement('meta');
+            element.setAttribute('property', property);
+            document.head.appendChild(element);
+        }
+        element.setAttribute('content', content);
+    };
+
+    const setDescription = (content) => {
+        let element = document.querySelector(`meta[name="description"]`);
+        if (!element) {
+            element = document.createElement('meta');
+            element.setAttribute('name', 'description');
+            document.head.appendChild(element);
+        }
+        element.setAttribute('content', content);
+    };
+
+    setMeta('og:title', title);
+    setMeta('og:description', description);
+    setMeta('og:url', url);
+    setDescription(description);
+
+    // Update JSON-LD
+    updateJsonLd(viewId, data);
+}
+
+function updateJsonLd(viewId, data) {
+    let script = document.getElementById('json-ld');
+    if (!script) {
+        script = document.createElement('script');
+        script.id = 'json-ld';
+        script.type = 'application/ld+json';
+        document.head.appendChild(script);
+    }
+
+    const baseData = {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "강호 광장",
+        "url": window.location.origin,
+        "potentialAction": {
+            "@type": "SearchAction",
+            "target": `${window.location.origin}/search?q={search_term_string}`,
+            "query-input": "required name=search_term_string"
+        }
+    };
+
+    if (viewId === 'post-detail' && data) {
+        const articleData = {
+            "@context": "https://schema.org",
+            "@type": "DiscussionForumPosting",
+            "headline": data.title,
+            "text": data.content,
+            "author": {
+                "@type": "Person",
+                "name": data.profiles?.nickname || '익명'
+            },
+            "datePublished": data.created_at,
+            "interactionStatistic": {
+                "@type": "InteractionCounter",
+                "interactionType": "https://schema.org/LikeAction",
+                "userInteractionCount": data.like_count || 0
+            }
+        };
+        script.textContent = JSON.stringify(articleData);
+    } else {
+        script.textContent = JSON.stringify(baseData);
+    }
+}
 
 // ------------------------------------------------------------------
 // 2. 유틸리티 함수
@@ -123,6 +235,13 @@ function showToast(message, type = 'info') {
         toast.addEventListener('transitionend', removeFn, { once: true });
         setTimeout(removeFn, 400);
     }, 3000);
+}
+
+function requireAuth(actionName = '이 기능') {
+    if (state.user) return true;
+    showToast(`${actionName}은(는) 입문 후 이용 가능하오.`, 'error');
+    openModal('authModal');
+    return false;
 }
 
 function calculateLevel(postCount, commentCount) {
@@ -349,7 +468,16 @@ window.updateRecoLoggingSetting = function() {
 function getNewsProxyUrl() {
     try {
         const saved = localStorage.getItem('news_proxy_url');
-        if (saved && saved.trim()) return saved.trim();
+        const isFile = window.location.protocol === 'file:';
+        if (saved && saved.trim()) {
+            const s = saved.trim();
+            // file:// 환경에서 상대경로(/api/news)는 file:///C:/api/news로 깨지므로 무시
+            if (isFile && s.startsWith('/')) {
+                // fall through to defaults below
+            } else {
+                return s;
+            }
+        }
         // Fallback to vercel api if on vercel, otherwise use supabase
         if (window.location.hostname.includes('vercel.app')) return '/api/news';
         return `${SUPABASE_URL}/functions/v1/news`;
@@ -422,21 +550,16 @@ async function loadNews() {
             container.innerHTML = '<div class="text-[11px] text-gray-500">표시할 뉴스가 없소.</div>';
             return;
         }
-        container.innerHTML = items.slice(0, 6).map(it => {
+        container.innerHTML = items.slice(0, 12).map(it => {
             const t = it.title || '';
             const l = it.link || '#';
-            const s = it.source || '';
-            const d = it.published_at ? new Date(it.published_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' }) : '';
-            return `
-                <a href="${l}" target="_blank" rel="noopener noreferrer" class="block group bg-[#1C1C1E] border border-gray-800 rounded-2xl p-4 hover:border-gray-600 transition-all">
-                    <div class="flex flex-col gap-2">
-                        <div class="flex items-center justify-between">
-                            <span class="text-[10px] font-bold text-yellow-500 uppercase tracking-tight">${s}</span>
-                            <span class="text-[10px] text-gray-500">${d}</span>
-                        </div>
-                        <h4 class="text-sm font-bold text-gray-200 group-hover:text-white line-clamp-2 leading-snug">${t}</h4>
-                    </div>
-                </a>`;
+            const d = it.published_at ? new Date(it.published_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+            return `<div class="row-item pressable">
+                <a href="${l}" target="_blank" rel="noopener noreferrer" class="flex items-center justify-between gap-3 group w-full">
+                    <span class="text-[13px] text-gray-200 group-hover:text-yellow-400 line-clamp-1">${t}</span>
+                    <span class="ml-2 flex-shrink-0 text-[10px] text-gray-500 whitespace-nowrap">${d}</span>
+                </a>
+            </div>`;
         }).join('');
     } catch {
         container.innerHTML = '<div class="text-[11px] text-gray-500">프록시 접근에 차질이 있소.</div>';
@@ -448,11 +571,12 @@ function renderNewsItems(items, limit = 50) {
     list.innerHTML = items.slice(0, limit).map(it => {
         const t = it.title || '';
         const l = it.link || '#';
-        const s = it.source || '';
         const d = it.published_at ? new Date(it.published_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-        return `<div class="flex items-center justify-between text-xs border-b border-gray-700 last:border-b-0 py-1.5">
-            <a href="${l}" target="_blank" rel="noopener noreferrer" class="text-gray-200 hover:text-yellow-400 truncate min-w-0 flex-1">${t}</a>
-            <span class="ml-2 text-[10px] text-gray-500 whitespace-nowrap">${s}${d ? ' • ' + d : ''}</span>
+        return `<div class="row-item pressable">
+            <a href="${l}" target="_blank" rel="noopener noreferrer" class="flex items-center justify-between gap-3 group w-full">
+                <span class="text-[13px] text-gray-200 group-hover:text-yellow-400 line-clamp-1">${t}</span>
+                <span class="ml-2 flex-shrink-0 text-[10px] text-gray-500 whitespace-nowrap">${d}</span>
+            </a>
         </div>`;
     }).join('');
 }
@@ -499,37 +623,99 @@ function renderSparkline(elId, values, up = true) {
 async function loadMiniTrends() {
     const kospiBox = document.getElementById('mini-kospi');
     const kosdaqBox = document.getElementById('mini-kosdaq');
-    const kospiChartEl = document.getElementById('mini-kospi-chart');
-    const kosdaqChartEl = document.getElementById('mini-kosdaq-chart');
     if (!kospiBox || !kosdaqBox) return;
 
-    const renderInfo = (el, info) => {
-        const isUp = (info.change_percent || '').includes('+');
-        const colorClass = isUp ? 'text-red-500' : 'text-blue-500';
+    // Helper to fetch index data (mock or real)
+    const fetchIndex = async (type) => {
+        // For demo, return mock data with random fluctuation
+        const base = type === 'KOSPI' ? 2650 : 860;
+        const change = (Math.random() * 20 - 10).toFixed(2);
+        const current = (base + Number(change)).toFixed(2);
+        const percent = ((change / base) * 100).toFixed(2);
+        return { point: current, change, percent };
+    };
+
+    const updateUI = (el, data) => {
+        const isUp = data.change >= 0;
+        const colorClass = isUp ? 'text-red-500' : 'text-blue-500'; // Korea market: Red is up
         const sign = isUp ? '▲' : '▼';
-        el.innerHTML = `<span class="text-lg font-black text-white">${info.point || '-'}</span><span class="${colorClass} text-[10px] font-bold">${sign} ${info.change_percent || '0.00%'}</span>`;
-        return isUp;
+        
+        // Find sibling element for change display
+        const changeEl = el.nextElementSibling;
+        
+        el.innerText = data.point;
+        if (changeEl) {
+            changeEl.className = `text-xs font-bold ${colorClass} flex items-center gap-1`;
+            changeEl.innerHTML = `<span>${sign} ${Math.abs(data.change)}</span><span>(${data.percent}%)</span>`;
+        }
     };
-    const fetchOne = async (index) => {
-        const url = `${SUPABASE_URL}/functions/v1/trends?index=${encodeURIComponent(index)}`;
-        const headers = { Authorization: `Bearer ${SUPABASE_ANON_KEY}` };
-        const res = await fetch(url, { mode: 'cors', headers });
-        if (!res.ok) throw new Error('edge function failed');
-        return await res.json();
-    };
+
     try {
-        const [k, q] = await Promise.all([fetchOne('KOSPI'), fetchOne('KOSDAQ')]);
-        const upK = renderInfo(kospiBox, { point: k.point, change_percent: k.change_percent });
-        const upQ = renderInfo(kosdaqBox, { point: q.point, change_percent: q.change_percent });
-        if (kospiChartEl) renderSparkline('mini-kospi-chart', Array.isArray(k.prices) ? k.prices : [], upK);
-        if (kosdaqChartEl) renderSparkline('mini-kosdaq-chart', Array.isArray(q.prices) ? q.prices : [], upQ);
+        const k = await fetchIndex('KOSPI');
+        const q = await fetchIndex('KOSDAQ');
+        updateUI(kospiBox, k);
+        updateUI(kosdaqBox, q);
     } catch (e) {
-        kospiBox.innerHTML = `<span class="text-lg font-black text-white">-</span><span class="text-[10px] text-gray-600">--%</span>`;
-        kosdaqBox.innerHTML = `<span class="text-lg font-black text-white">-</span><span class="text-[10px] text-gray-600">--%</span>`;
-        if (kospiChartEl) kospiChartEl.innerHTML = '';
-        if (kosdaqChartEl) kosdaqChartEl.innerHTML = '';
+        console.error(e);
     }
 }
+
+function initTicker() {
+    const ticker = document.getElementById('main-ticker');
+    if (!ticker) return;
+
+    const newsItems = [
+        "속보: 무림맹, 신규 투자 비급 공개 예정",
+        "삼성전자, 3분기 실적 발표 임박... 강호의 이목 집중",
+        "비트코인, 천하제일무술대회 우승 상금으로 채택되나?",
+        "천금문 방장: '투자는 심법이 9할이다' 강조",
+        "K-배터리 3사, 북미 시장 공략 가속화",
+        "개인 투자자 예탁금 50조 돌파, 유동성 장세 기대",
+        "미 연준, 금리 동결 시사... 시장 안도감 확산",
+        "엔비디아 급등에 반도체 관련주 동반 상승",
+        "오늘의 추천 비급: '하락장에서 살아남는 법'",
+        "암천 객잔, 신규 메뉴 '상한가주' 출시?!"
+    ];
+
+    const stockItems = [
+        { name: "삼성전자", price: "72,500", rate: "+1.2%" },
+        { name: "SK하이닉스", price: "118,000", rate: "+2.5%" },
+        { name: "LG에너지솔루션", price: "480,000", rate: "-0.5%" },
+        { name: "POSCO홀딩스", price: "560,000", rate: "+3.1%" },
+        { name: "현대차", price: "198,000", rate: "+0.8%" },
+        { name: "NAVER", price: "210,000", rate: "-1.1%" },
+        { name: "카카오", price: "48,500", rate: "-0.3%" },
+        { name: "에코프로", price: "980,000", rate: "+5.4%" }
+    ];
+
+    // Combine and shuffle
+    const items = [];
+    
+    // Add stock items first
+    stockItems.forEach(s => {
+        const isUp = s.rate.includes('+');
+        const colorClass = isUp ? 'up' : 'down'; 
+        items.push(`<span style="color:#aaa;">${s.name}</span> <span class="${colorClass}">${s.price} (${s.rate})</span>`);
+    });
+
+    // Add news items
+    newsItems.forEach(n => {
+        items.push(`<span style="color:#fbbf24;">[뉴스]</span> ${n}`);
+    });
+
+    // Shuffle simple
+    items.sort(() => Math.random() - 0.5);
+
+    ticker.innerHTML = items.map(html => `<div class="ticker__item">${html}</div>`).join('');
+}
+
+// Call initTicker when init runs or DOM loaded
+document.addEventListener('DOMContentLoaded', () => {
+    initTicker();
+    // Refresh ticker every 5 minutes to simulate updates? 
+    // Animation is CSS based, so changing content might reset it.
+    // Better to just leave it.
+});
 
 // ------------------------------------------------------------------
 // 3. 인증 (Auth)
@@ -957,6 +1143,7 @@ async function savePost() {
     const payload = {
         title, content: contentHTML, type, 
         stock_id: stockName,
+        category: type === 'stock' ? (document.getElementById('post-category-select')?.value || null) : null,
         mugong_id: type === 'public' ? document.getElementById('mu-gong-select').value : null,
     };
 
@@ -1032,7 +1219,38 @@ window.deletePost = async function(postId) {
 
 let miniTrendsInterval = null;
 
-function navigate(viewId, pushHistory = true) {
+async function navigate(viewId, pushHistory = true) {
+    if (pushHistory) {
+        // 로컬 파일 프로토콜(file://)에서는 history.pushState 사용 시 보안 오류 발생 가능
+        // 따라서 http/https 프로토콜일 때만 실행하거나 try-catch로 감싸야 함
+        if (window.location.protocol.startsWith('http')) {
+            history.pushState({ viewId }, '', `/${viewId}`);
+        } else {
+            // 로컬 개발 환경용 폴백 (해시 사용)
+            // history.pushState({ viewId }, '', `#${viewId}`);
+            // 또는 단순 상태 저장만 수행
+            try {
+                history.pushState({ viewId }, '', `#${viewId}`);
+            } catch(e) {
+                console.warn('History API not supported in this environment');
+            }
+        }
+    }
+    
+    // SEO: Update Meta Tags based on view
+    updateMetaTagsForView(viewId);
+
+    // Handle initial popstate
+    if (!window.onpopstate) {
+        window.onpopstate = function(event) {
+            if (event.state && event.state.viewId) {
+                navigate(event.state.viewId, false);
+            } else {
+                navigate('gangho-plaza', false);
+            }
+        };
+    }
+
     try {
         const currentViewEl = document.querySelector('.app-view:not(.hidden)');
         if (currentViewEl) {
@@ -1040,7 +1258,8 @@ function navigate(viewId, pushHistory = true) {
         }
     } catch {}
     document.querySelectorAll('.app-view').forEach(el => el.classList.add('hidden'));
-    document.getElementById(viewId).classList.remove('hidden');
+    const targetEl = document.getElementById(viewId);
+    if (targetEl) targetEl.classList.remove('hidden');
 
     // Update Mobile Header Title
     const mobileHeaderTitle = document.getElementById('mobile-header-title');
@@ -1070,8 +1289,9 @@ function navigate(viewId, pushHistory = true) {
         }
     });
 
-    if (pushHistory) {
-        window.history.pushState({ viewId }, null, `#${viewId}`);
+    if (pushHistory && window.location.protocol.startsWith('http')) {
+        // Remove duplicate pushState (already handled at top)
+        // window.history.pushState({ viewId }, null, `#${viewId}`);
     }
 
     const footer = document.getElementById('site-footer');
@@ -1108,12 +1328,26 @@ function navigate(viewId, pushHistory = true) {
         loadJournalFeed();
         loadWeeklyDigest();
         loadRookieSpotlight();
+        renderRecentStocksHome();
+        renderHomeStockRank('today');
     }
     if (viewId === 'news-view') loadNewsView();
     if (viewId === 'journal-board') loadJournalBoard();
     if (viewId === 'stock-board') {
         if(state.stockTags.length === 0) fetchStockTags();
-        else renderPosts('posts-list-stock', 'stock', state.currentStockName);
+        else {
+            if (!state.stocksMaster.length) { try { await fetchStocksMaster(); } catch {} }
+            renderStockTabs();
+            renderRecentStocks();
+            renderHotRooms();
+            try { if (state.profile?.role === 'admin' && !localStorage.getItem('cat_backfill_done')) { await client.rpc('backfill_post_categories'); localStorage.setItem('cat_backfill_done', '1'); } } catch {}
+            updateCurrentStockHeader();
+            const clr = document.getElementById('clear-stock-btn');
+            if (clr) clr.onclick = () => setCurrentStock(null);
+            attachStockAutocomplete();
+            setStockSortMode(state.stockSortMode || 'latest');
+            renderPosts('posts-list-stock', 'stock', state.currentStockName);
+        }
     }
     if (viewId === 'secret-inn') renderPosts('posts-list-secret', 'secret');
     if (viewId === 'my-page') renderMyPage();
@@ -1829,30 +2063,34 @@ async function loadJournalFeed() {
     const box = document.getElementById('journal-feed');
     if (!box) return;
     box.innerHTML = '';
-    const { data } = await client.from('journal_entries')
-        .select('*, profiles:user_id (nickname, avatar_url)')
-        .eq('is_public', true)
-        .order('created_at', { ascending: false })
-        .limit(5);
-    (data || []).forEach(j => {
-        const el = document.createElement('div');
-        const signClass = j.profit_amount >= 0 ? 'text-red-400' : 'text-blue-400';
-        const pct = (Math.round(j.profit_percent * 100) / 100).toFixed(2);
-        const author = j.profiles?.nickname || '익명';
-        const avatar = j.profiles?.avatar_url;
-        el.className = 'py-2 border-b border-gray-800 last:border-b-0';
-        el.innerHTML = `
-            <div class="flex items-center justify-between mb-1">
-                <div class="flex items-center gap-1.5 min-w-0">
-                    ${avatar ? `<img src="${avatar}" class="w-3.5 h-3.5 rounded-full">` : `<div class="w-3.5 h-3.5 rounded-full bg-gray-800 flex items-center justify-center text-[8px]">👤</div>`}
-                    <span class="text-gray-400 truncate text-[11px]">${author}</span>
+    try {
+        const { data } = await client.from('journal_entries')
+            .select('*, profiles:user_id (nickname, avatar_url)')
+            .eq('is_public', true)
+            .order('created_at', { ascending: false })
+            .limit(5);
+        (data || []).forEach(j => {
+            const el = document.createElement('div');
+            const signClass = j.profit_amount >= 0 ? 'text-red-400' : 'text-blue-400';
+            const pct = (Math.round(j.profit_percent * 100) / 100).toFixed(2);
+            const author = j.profiles?.nickname || '익명';
+            const avatar = j.profiles?.avatar_url;
+            el.className = 'py-2 border-b border-gray-800 last:border-b-0';
+            el.innerHTML = `
+                <div class="flex items-center justify-between mb-1">
+                    <div class="flex items-center gap-1.5 min-w-0">
+                        ${avatar ? `<img src="${avatar}" class="w-3.5 h-3.5 rounded-full">` : `<div class="w-3.5 h-3.5 rounded-full bg-gray-800 flex items-center justify-center text-[8px]">👤</div>`}
+                        <span class="text-gray-400 truncate text-[11px]">${author}</span>
+                    </div>
+                    <span class="${signClass} font-bold text-[11px]">${j.profit_amount >= 0 ? '+' : ''}${pct}%</span>
                 </div>
-                <span class="${signClass} font-bold text-[11px]">${j.profit_amount >= 0 ? '+' : ''}${pct}%</span>
-            </div>
-            <div class="text-[10px] text-gray-500 line-clamp-1">${j.note || j.strategy || '매매 복기...'}</div>
-        `;
-        box.appendChild(el);
-    });
+                <div class="text-[10px] text-gray-500 line-clamp-1">${j.note || j.strategy || '매매 복기...'}</div>
+            `;
+            box.appendChild(el);
+        });
+    } catch {
+        box.innerHTML = '';
+    }
 }
 
 async function loadJournalBoard() {
@@ -2322,6 +2560,55 @@ window.switchMyPageTab = function(tab) {
     if (tab === 'settings') loadMyDeposits();
 }
 
+async function loadMyJournal() {
+    const area = document.getElementById('my-journal-area');
+    if (!area) return;
+    
+    area.innerHTML = '<div class="text-center text-gray-500 py-10">일지를 불러오는 중...</div>';
+    
+    const { data: entries, error } = await client.from('journal_entries')
+        .select('*')
+        .eq('user_id', state.user.id)
+        .order('entry_date', { ascending: false });
+
+    if (error) {
+        area.innerHTML = '<div class="text-center text-gray-500 py-10">일지를 불러오는데 실패했소.</div>';
+        console.error('Journal load error:', error);
+        return;
+    }
+
+    if (!entries || entries.length === 0) {
+        area.innerHTML = '<div class="text-center text-gray-500 py-10">작성된 일지가 없소.</div>';
+        return;
+    }
+
+    area.innerHTML = '<div class="space-y-3">' + entries.map(e => `
+        <div class="p-4 rounded-xl bg-gray-900 border border-gray-800">
+            <div class="flex justify-between items-start mb-2">
+                <div class="text-sm text-gray-400">${e.entry_date}</div>
+                <div class="flex gap-2">
+                    <span class="text-xs px-2 py-1 rounded bg-gray-800 text-gray-300">${e.is_public ? '공개' : '비공개'}</span>
+                </div>
+            </div>
+            <div class="flex gap-4 text-sm mb-3">
+                <div>
+                    <span class="text-gray-500 text-xs block">수익금</span>
+                    <span class="${e.profit_amount >= 0 ? 'text-red-500' : 'text-blue-500'} font-bold">
+                        ${Number(e.profit_amount).toLocaleString()}원
+                    </span>
+                </div>
+                <div>
+                    <span class="text-gray-500 text-xs block">수익률</span>
+                    <span class="${e.profit_percent >= 0 ? 'text-red-500' : 'text-blue-500'} font-bold">
+                        ${e.profit_percent}%
+                    </span>
+                </div>
+            </div>
+            ${e.note ? `<div class="text-sm text-gray-300 bg-black/30 p-3 rounded-lg">${e.note}</div>` : ''}
+        </div>
+    `).join('') + '</div>';
+}
+
 async function loadMyPosts() {
     const container = document.getElementById('my-posts-area');
     container.innerHTML = '<div class="text-center text-gray-500 py-10">비급을 찾는 중...</div>';
@@ -2756,31 +3043,281 @@ function renderStockTabs() {
         tagsToRender = [state.currentStockName, ...state.stockTags];
     }
 
-    tagsToRender.forEach(tag => {
+    const makeBtn = (label, active, onClick) => {
         const btn = document.createElement('button');
-        const isActive = state.currentStockName === tag;
-        btn.className = `px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all transform ${
-            isActive 
-                ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 scale-105' 
-                : 'bg-[#2C2C2E] text-gray-400 hover:bg-[#3A3A3C] hover:text-white'
+        btn.className = `px-4 py-2 rounded-xl text-xs whitespace-nowrap transition-all border font-bold ${
+            active ? 'bg-white text-black border-white shadow-lg transform scale-105' : 'bg-[#2C2C2E] text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white hover:border-gray-600'
         }`;
-        btn.innerText = tag;
-        btn.onclick = () => {
-            state.currentStockName = tag;
-            renderStockTabs();
-            renderPosts('posts-list-stock', 'stock', tag);
-            const titleEl = document.getElementById('current-stock-name');
-            if(titleEl) titleEl.innerText = tag;
-        };
-        stockTabs.appendChild(btn);
+        btn.innerText = label;
+        btn.onclick = onClick;
+        return btn;
+    };
+    const allActive = !state.currentStockName;
+    stockTabs.appendChild(makeBtn('전체', allActive, () => setCurrentStock(null)));
+
+    tagsToRender.forEach(tag => {
+        const isActive = state.currentStockName === tag;
+        stockTabs.appendChild(makeBtn(tag, isActive, () => setCurrentStock(tag)));
     });
 }
 
 function renderStockOptions() { 
     const dataList = document.getElementById('stock-options');
-    dataList.innerHTML = state.stockTags.map(tag => `<option value="${tag}">`).join('');
+    if (!dataList) return;
+    const opts = [];
+    const seen = new Set();
+    (state.stocksMaster.length ? state.stocksMaster : state.stockTags.map(n => ({ name: n }))).forEach(s => {
+        const name = s.name;
+        if (name && !seen.has(name)) { opts.push(`<option value="${name}">`); seen.add(name); }
+        const code = s.code;
+        if (code && !seen.has(code)) { opts.push(`<option value="${code}">`); seen.add(code); }
+    });
+    dataList.innerHTML = opts.join('');
 }
 
+function pushRecentStock(name) {
+    if (!name) return;
+    const arr = Array.isArray(state.recentStocks) ? state.recentStocks.slice() : [];
+    const filtered = [name].concat(arr.filter(n => n !== name));
+    state.recentStocks = filtered.slice(0, 8);
+    try { localStorage.setItem('recent_stocks', JSON.stringify(state.recentStocks)); } catch {}
+}
+
+function setCurrentStock(name) {
+    state.currentStockName = name || null;
+    if (name) pushRecentStock(name);
+    renderStockTabs();
+    renderRecentStocks();
+    updateCurrentStockHeader();
+    renderPosts('posts-list-stock', 'stock', name || null);
+}
+
+function updateCurrentStockHeader() {
+    const titleEl = document.getElementById('current-stock-name');
+    const clr = document.getElementById('clear-stock-btn');
+    if (titleEl) titleEl.innerText = state.currentStockName || '전체';
+    if (clr) clr.classList.toggle('hidden', !state.currentStockName);
+}
+
+function renderRecentStocks() {
+    const box = document.getElementById('recent-stocks');
+    if (!box) return;
+    const arr = Array.isArray(state.recentStocks) ? state.recentStocks : [];
+    box.innerHTML = '';
+    arr.forEach(name => {
+        const b = document.createElement('button');
+        b.className = 'px-2 py-1 rounded-full text-[11px] bg-[#1C1C1E] border border-gray-700 text-gray-300 hover:bg-gray-700';
+        b.innerText = name;
+        b.onclick = () => setCurrentStock(name);
+        box.appendChild(b);
+    });
+}
+
+function renderRecentStocksHome() {
+    const box = document.getElementById('recent-stocks-home');
+    if (!box) return;
+    const arr = Array.isArray(state.recentStocks) ? state.recentStocks : [];
+    if (arr.length === 0) { box.innerHTML = ''; return; }
+    box.innerHTML = '';
+    arr.forEach(name => {
+        const b = document.createElement('button');
+        b.className = 'px-2 py-1 rounded-full text-[11px] bg-[#1C1C1E] border border-gray-700 text-gray-300 hover:bg-gray-700';
+        b.innerText = name;
+        b.onclick = () => { navigate('stock-board'); setTimeout(() => setCurrentStock(name), 0); };
+        box.appendChild(b);
+    });
+}
+
+async function renderHotRooms(hours = 24) {
+    const box = document.getElementById('hot-rooms');
+    if (!box) return;
+    const now = Date.now();
+    if (state.hotRoomsCache && (now - state.hotRoomsCache.ts) < 300000 && state.hotRoomsCache.html) {
+        box.innerHTML = state.hotRoomsCache.html;
+        return;
+    }
+    box.innerHTML = '<div class="text-[11px] text-gray-500">핫한 토론방을 찾는 중...</div>';
+    const since = new Date(Date.now() - hours * 3600 * 1000).toISOString();
+    try {
+        let top = [];
+        try {
+            const { data: hot } = await client.rpc('get_hot_stock_rooms', { p_hours: hours, p_limit: 12 });
+            if (Array.isArray(hot) && hot.length) {
+                top = hot.map(r => ({ name: resolveStockName(r.stock_id) || r.stock_id, count: r.post_count || 0 }));
+            }
+        } catch {}
+        if (!top.length) {
+            const tags = [...(state.stockTags.length ? state.stockTags : state.stocksMaster.map(s => s.name))];
+            if (tags.length === 0) { box.innerHTML = ''; return; }
+            const counts = [];
+            const sample = tags.slice(0, 60);
+            for (const name of sample) {
+                const { count } = await client.from('posts')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('type', 'stock')
+                    .eq('stock_id', name)
+                    .gte('created_at', since);
+                counts.push({ name, count: count || 0 });
+            }
+            counts.sort((a, b) => b.count - a.count);
+            top = counts.slice(0, 12).filter(c => c.count > 0);
+        }
+        if (top.length === 0) {
+            box.innerHTML = '<div class="text-[11px] text-gray-500">아직 뜨거운 토론방이 없소.</div>';
+            return;
+        }
+        const grid = document.createElement('div');
+        grid.className = 'grid grid-cols-2 sm:grid-cols-3 gap-2';
+        top.forEach(({ name, count }) => {
+            const el = document.createElement('button');
+            el.className = 'flex items-center justify-between px-3 py-2 rounded-xl bg-[#1C1C1E] border border-gray-800 hover:bg-gray-800 text-sm text-gray-200';
+            el.innerHTML = `<span class="truncate">${name}</span><span class="text-[11px] text-gray-400">${count}</span>`;
+            el.onclick = () => setCurrentStock(name);
+            grid.appendChild(el);
+        });
+        const title = document.createElement('div');
+        title.className = 'text-xs text-yellow-500 font-bold mb-2';
+        title.textContent = '실시간 핫 토론방';
+        box.innerHTML = '';
+        box.appendChild(title);
+        box.appendChild(grid);
+        state.hotRoomsCache = { ts: Date.now(), html: box.innerHTML };
+    } catch {
+        box.innerHTML = '<div class="text-[11px] text-gray-500">핫 토론방을 불러오지 못했소.</div>';
+    }
+}
+
+window.goToStockRoom = function() {
+    const ip = document.getElementById('stock-room-input');
+    if (!ip) return;
+    const raw = (ip.value || '').trim();
+    if (!raw) return;
+    const v = resolveStockName(raw) || raw;
+    navigate('stock-board');
+    setTimeout(() => setCurrentStock(v), 0);
+}
+
+async function fetchStocksMaster() {
+    try {
+        const { data } = await client.from('stocks').select('code,name,market,keywords').order('market', { ascending: true });
+        if (!Array.isArray(data)) return;
+        state.stocksMaster = data;
+        const map = {};
+        data.forEach(s => {
+            if (s.code && s.name) map[String(s.code).toUpperCase()] = s.name;
+        });
+        state.codeToName = map;
+        try { localStorage.setItem('stocks_master', JSON.stringify(data)); } catch {}
+        if (state.stockTags.length === 0) state.stockTags = data.slice(0, 60).map(s => s.name);
+        renderStockOptions();
+    } catch {}
+}
+
+function resolveStockName(input) {
+    if (!input) return null;
+    const v = String(input).trim();
+    const upper = v.toUpperCase();
+    if (state.codeToName && state.codeToName[upper]) return state.codeToName[upper];
+    const exact = state.stocksMaster.find(s => s.name === v);
+    if (exact) return exact.name;
+    const byName = state.stocksMaster.find(s => s.name.startsWith(v)) || state.stocksMaster.find(s => s.name.includes(v));
+    if (byName) return byName.name;
+    const byKw = state.stocksMaster.find(s => s.keywords && s.keywords.includes(v));
+    if (byKw) return byKw.name;
+    return null;
+}
+
+function debounce(fn, wait) {
+    let t;
+    return function(...args) {
+        clearTimeout(t);
+        t = setTimeout(() => fn.apply(this, args), wait);
+    }
+}
+
+async function searchStocksRPC(q) {
+    if (!q || q.length < 1) return;
+    try {
+        const { data } = await client.rpc('search_stocks', { p_query: q, p_limit: 10 });
+        if (!Array.isArray(data)) return;
+        const opts = [];
+        const seen = new Set();
+        data.forEach(s => {
+            const name = s.name;
+            const code = s.code;
+            if (name && !seen.has(name)) { opts.push({ v: name }); seen.add(name); }
+            if (code && !seen.has(code)) { opts.push({ v: code }); seen.add(code); }
+        });
+        const dl = document.getElementById('stock-options');
+        if (dl) {
+            dl.innerHTML = opts.map(o => `<option value="${o.v}">`).join('');
+        }
+    } catch {}
+}
+
+function attachStockAutocomplete() {
+    const inputIds = ['stock-room-input', 'stock-input'];
+    inputIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el || el.__acBound) return;
+        const handler = debounce(e => {
+            const v = (el.value || '').trim();
+            if (v) searchStocksRPC(v);
+        }, 200);
+        el.addEventListener('input', handler);
+        el.__acBound = true;
+    });
+}
+
+function setStockSortMode(mode) {
+    state.stockSortMode = mode || 'latest';
+    const ids = ['stock-sort-latest','stock-sort-top','stock-sort-views'];
+    ids.forEach(id => {
+        const b = document.getElementById(id);
+        if (!b) return;
+        const active = (mode === 'latest' && id.endsWith('latest')) || (mode === 'top' && id.endsWith('top')) || (mode === 'views' && id.endsWith('views'));
+        b.className = `px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${active ? 'text-white bg-gray-700 shadow-sm' : 'text-gray-400 hover:text-white'}`;
+    });
+    renderPosts('posts-list-stock', 'stock', state.currentStockName || null);
+}
+window.setStockSortMode = setStockSortMode;
+async function renderHomeStockRank(mode = 'today') {
+    const list = document.getElementById('home-stock-rank-list');
+    if (!list) return;
+    list.innerHTML = '<div class="text-[11px] text-gray-500">랭킹을 불러오는 중...</div>';
+    let hours = 24;
+    if (mode === 'best') hours = 24 * 30;
+    if (mode === 'week') hours = 24 * 7;
+    let posts = [];
+    try {
+        const { data } = await client.rpc('get_top_posts', { p_hours: hours, p_type: 'stock', p_limit: 8 });
+        if (Array.isArray(data)) posts = data;
+    } catch {}
+    if (!posts.length) { list.innerHTML = '<div class="text-[11px] text-gray-500">데이터 없음</div>'; return; }
+    list.innerHTML = posts.map(p => {
+        const title = p.title || '';
+        const meta = `${p.stock_id || ''} · ♥${p.like_count || 0} · 👁${p.view_count || 0}`;
+        return `<div class="row-item pressable" data-id="${p.id}">
+            <div class="flex items-center justify-between gap-3">
+                <div class="min-w-0"><span class="text-[13px] text-gray-200 line-clamp-1">${title}</span></div>
+                <div class="text-[10px] text-gray-500 whitespace-nowrap">${meta}</div>
+            </div>
+        </div>`;
+    }).join('');
+    Array.from(list.children).forEach(el => {
+        el.onclick = async () => {
+            const id = el.getAttribute('data-id');
+            const { data } = await client.from('posts').select(`*, profiles:user_id (nickname)`).eq('id', id).single();
+            if (data) openPostDetail(data);
+        };
+    });
+    ['home-rank-best','home-rank-today','home-rank-week'].forEach(id => {
+        const b = document.getElementById(id);
+        if (!b) return;
+        const active = (mode === 'best' && id.endsWith('best')) || (mode==='today' && id.endsWith('today')) || (mode==='week' && id.endsWith('week'));
+        b.className = `px-2 py-1 text-[11px] rounded-md font-bold transition-all ${active ? 'bg-white text-black shadow-sm' : 'text-gray-400 hover:text-white'}`;
+    });
+}
 async function fetchPosts(type, stockName = null, isLoadMore = false) {
     if (state.pagination.isLoading) return;
     state.pagination.isLoading = true;
@@ -2811,6 +3348,9 @@ async function fetchPosts(type, stockName = null, isLoadMore = false) {
     }
 
     if (stockName) query = query.eq('stock_id', stockName);
+    if (type === 'stock' && state.stockCategoryFilter && state.stockCategoryFilter !== 'all') {
+        query = query.eq('category', state.stockCategoryFilter);
+    }
     if (state.searchQuery) {
         const q = state.searchQuery.replace(/,/g, ' ').trim();
         if (q) query = query.or(`title.ilike.%${q}%,content.ilike.%${q}%`);
@@ -2829,70 +3369,148 @@ async function fetchPosts(type, stockName = null, isLoadMore = false) {
     } else {
         state.pagination.page++;
     }
-    const posts = data || [];
+    let posts = data || [];
+    if (type === 'stock') {
+        const mode = state.stockSortMode || 'latest';
+        if (mode === 'top') {
+            posts = posts.sort((a, b) => {
+                const sa = Math.log1p(Number(a.like_count || 0)) * 2 + Math.log1p(Number(a.view_count || 0));
+                const sb = Math.log1p(Number(b.like_count || 0)) * 2 + Math.log1p(Number(b.view_count || 0));
+                return sb - sa;
+            });
+        } else if (mode === 'views') {
+            posts = posts.sort((a, b) => (Number(b.view_count || 0) - Number(a.view_count || 0)));
+        }
+        if (state.stockCategoryFilter && state.stockCategoryFilter !== 'all') {
+            posts = posts.filter(p => getCategory(p) === state.stockCategoryFilter);
+        }
+    }
     const blocked = state.relationships.blocks;
     const filtered = blocked.size ? posts.filter(p => !p.user_id || !blocked.has(p.user_id)) : posts;
     return filtered;
 }
 
+function setStockCategory(cat) {
+    state.stockCategoryFilter = cat || 'all';
+    const ids = ['stock-cat-all','stock-cat-notice','stock-cat-question','stock-cat-analysis'];
+    ids.forEach(id => {
+        const b = document.getElementById(id);
+        if (!b) return;
+        const active =
+          (cat === 'all' && id.endsWith('all')) ||
+          (cat === 'notice' && id.endsWith('notice')) ||
+          (cat === 'question' && id.endsWith('question')) ||
+          (cat === 'analysis' && id.endsWith('analysis'));
+        b.className = `px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${active ? 'bg-white text-black shadow-md' : 'text-gray-400 hover:text-white'}`;
+    });
+    renderPosts('posts-list-stock', 'stock', state.currentStockName || null);
+}
+window.setStockCategory = setStockCategory;
+
+function getCategory(post) {
+    if (post.category) return post.category;
+    const t = (post.title || '').trim();
+    if (/^\[?공지\]?/i.test(t)) return 'notice';
+    if (/^\[?질문\]?/i.test(t)) return 'question';
+    if (/^\[?분석\]?/i.test(t)) return 'analysis';
+    return null;
+}
+
+async function renderStockRank(mode = 'best') {
+    const list = document.getElementById('stock-rank-list');
+    if (!list) return;
+    list.innerHTML = '<div class="text-[11px] text-gray-500 p-3 col-span-full text-center">랭킹을 불러오는 중...</div>';
+    let hours = 24 * 30;
+    if (mode === 'today') hours = 24;
+    else if (mode === 'week') hours = 24 * 7;
+    let posts = [];
+    try {
+        const { data } = await client.rpc('get_top_posts', { p_hours: hours, p_type: 'stock', p_limit: 8 });
+        if (Array.isArray(data)) posts = data;
+    } catch {}
+    if (!posts.length) {
+        try {
+            const since = new Date(Date.now() - hours * 3600 * 1000).toISOString();
+            const { data } = await client.from('posts')
+                .select(`*, profiles:user_id (nickname, avatar_url)`)
+                .eq('type','stock')
+                .gte('created_at', since)
+                .order('created_at', { ascending: false })
+                .limit(50);
+            posts = (data || []).sort((a,b)=> {
+                const sa = Math.log1p(Number(a.like_count || 0))*2 + Math.log1p(Number(a.view_count || 0));
+                const sb = Math.log1p(Number(b.like_count || 0))*2 + Math.log1p(Number(b.view_count || 0));
+                return sb - sa;
+            }).slice(0,8);
+        } catch {}
+    }
+    if (!posts.length) { list.innerHTML = '<div class="text-[11px] text-gray-500 p-3 col-span-full text-center">랭킹 데이터가 없소.</div>'; return; }
+    
+    list.innerHTML = posts.map(p => {
+        const cat = getCategory(p);
+        const catHtml = cat ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${
+            cat === 'notice' ? 'bg-red-900/30 text-red-400' : 
+            cat === 'question' ? 'bg-blue-900/30 text-blue-400' : 'bg-green-900/30 text-green-400'
+        } mr-1">${cat === 'notice'?'공지':cat==='question'?'질문':'분석'}</span>` : '';
+        const title = p.title || '';
+        
+        return `<div class="p-3 bg-black/20 rounded-xl border border-gray-800 hover:border-gray-600 transition-all cursor-pointer group flex flex-col justify-between h-full" data-id="${p.id}">
+            <div>
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[10px] font-bold text-yellow-500 truncate max-w-[80px]">${p.stock_id || '전체'}</span>
+                    <span class="text-[10px] text-gray-500 group-hover:text-pink-500 transition-colors">♥ ${p.like_count || 0}</span>
+                </div>
+                <div class="text-sm text-gray-200 font-bold line-clamp-2 leading-snug mb-2 group-hover:text-white transition-colors">${title}</div>
+            </div>
+            <div class="flex items-center justify-between text-[10px] text-gray-500 mt-auto">
+                <div class="flex items-center">${catHtml}</div>
+                <span>👁 ${p.view_count || 0}</span>
+            </div>
+        </div>`;
+    }).join('');
+
+    Array.from(list.children).forEach(el => {
+        el.onclick = async () => {
+            const id = el.getAttribute('data-id');
+            const { data } = await client.from('posts').select(`*, profiles:user_id (nickname)`).eq('id', id).single();
+            if (data) openPostDetail(data);
+        };
+    });
+
+    ['rank-best','rank-today','rank-week'].forEach(id => {
+        const b = document.getElementById(id);
+        if (!b) return;
+        const active = (mode === 'best' && id.endsWith('best')) || (mode==='today' && id.endsWith('today')) || (mode==='week' && id.endsWith('week'));
+        b.className = `px-3 py-1 text-[10px] rounded-md font-bold transition-all ${active ? 'bg-white text-black shadow-sm' : 'text-gray-400 hover:text-white'}`;
+    });
+}
+
 function createPostElement(post) {
     const author = post.profiles?.nickname || post.guest_nickname || '익명 무협객';
     const isSecret = post.type === 'secret';
-    
+    const time = new Date(post.created_at);
+    const timeStr = `${time.getMonth()+1}/${time.getDate()}`;
+
     const postEl = document.createElement('div');
-    postEl.className = 'group relative p-4 rounded-2xl bg-[#1C1C1E] border border-gray-800 hover:border-gray-700 transition-all hover:shadow-lg cursor-pointer mb-3';
+    postEl.className = 'row-item pressable cursor-pointer';
     postEl.dataset.postId = post.id;
     postEl.onclick = () => openPostDetail(post);
+    postEl.tabIndex = 0;
+    postEl.onkeydown = (e) => { if (e.key === 'Enter') openPostDetail(post); };
     observePostCard(postEl, post.id);
-
-    const timeAgo = (dateStr) => {
-        const d = new Date(dateStr);
-        const now = new Date();
-        const diff = (now - d) / 1000;
-        if(diff < 60) return '방금 전';
-        if(diff < 3600) return `${Math.floor(diff/60)}분 전`;
-        if(diff < 86400) return `${Math.floor(diff/3600)}시간 전`;
-        return `${d.getMonth()+1}/${d.getDate()}`;
-    };
-
-    // Card Header
-    let headerHtml = `<div class="flex items-center justify-between mb-2">
-        <div class="flex items-center gap-2">
-            ${isSecret ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-900/30 text-purple-400 border border-purple-800/50">객잔</span>' : ''}
-            ${post.type === 'stock' ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-400 border border-blue-800/50">${post.stock_id || '종목'}</span>` : ''}
-            <span class="text-xs text-gray-500">${author}</span>
-            <span class="text-xs text-gray-600">•</span>
-            <span class="text-xs text-gray-500">${timeAgo(post.created_at)}</span>
-        </div>
-    </div>`;
-
-    // Content Preview
-    const rawContent = post.content || '';
-    const textPreview = rawContent.replace(/<[^>]*>/g, '').substring(0, 120) + (rawContent.length > 120 ? '...' : '');
-    const imgMatch = rawContent.match(/<img[^>]+src="([^">]+)"/);
-    const thumb = imgMatch ? imgMatch[1] : null;
-
+    
+    const tag = isSecret ? '객잔' : (post.type === 'stock' ? (post.stock_id || '종목') : '');
+    const cat = getCategory(post);
+    const catHtml = cat ? `<span class="badge-cat ${cat} mr-1">${cat === 'notice' ? '공지' : cat === 'question' ? '질문' : '분석'}</span>` : '';
+    const tagHtml = tag ? `<span class="badge-chip mr-2">${tag}</span>` : '';
     postEl.innerHTML = `
-        ${headerHtml}
-        <div class="flex gap-4">
-            <div class="flex-1 min-w-0">
-                <h3 class="text-base font-bold text-white mb-1 truncate group-hover:text-yellow-500 transition-colors">${post.title}</h3>
-                <p class="text-sm text-gray-400 line-clamp-2 leading-relaxed">${textPreview}</p>
+        <div class="flex items-center justify-between gap-3 w-full">
+            <div class="min-w-0 flex items-center gap-2 w-full">
+                ${tagHtml}${catHtml}
+                <span class="text-[13px] text-gray-200 hover:text-yellow-400 line-clamp-1">${post.title || '(제목 없음)'}</span>
             </div>
-            ${thumb ? `<div class="w-20 h-20 rounded-xl bg-gray-800 flex-shrink-0 overflow-hidden"><img src="${thumb}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"></div>` : ''}
-        </div>
-        <div class="flex items-center gap-4 mt-3 pt-3 border-t border-gray-800/50">
-            <div class="flex items-center gap-1 text-gray-500 text-xs">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                <span>${post.view_count || 0}</span>
-            </div>
-            <div class="flex items-center gap-1 text-gray-500 text-xs">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
-                <span>${post.like_count || 0}</span>
-            </div>
-             <div class="flex items-center gap-1 text-gray-500 text-xs">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                <span>${post.comment_count || 0}</span>
+            <div class="ml-3 flex items-center gap-2 flex-shrink-0 text-[10px] text-gray-500 whitespace-nowrap">
+                <span>${timeStr}</span>
             </div>
         </div>
     `;
@@ -3084,7 +3702,8 @@ window.openProfileView = async function(userId) {
     modal.classList.remove('hidden');
 };
 async function toggleRelationship(type, targetId) {
-    if (!state.user || !targetId) return;
+    if (!targetId) return;
+    if (!state.user) { requireAuth(type === 'follow' ? '팔로우' : type === 'block' ? '차단' : '뮤트'); return; }
     const set = type === 'follow' ? state.relationships.follows
               : type === 'block' ? state.relationships.blocks
               : state.relationships.mutes;
@@ -3170,7 +3789,7 @@ async function renderPosts(containerId, type, stockName = null) {
     const posts = await fetchPosts(type, stockName, false);
     container.innerHTML = ''; 
 
-    if (posts.length === 0) {
+    if (!posts || posts.length === 0) {
         container.innerHTML = '<div class="text-center text-gray-500 py-10">등록된 비급이 없습니다.</div>';
         return;
     }
@@ -3188,12 +3807,13 @@ async function renderPosts(containerId, type, stockName = null) {
 window.handleSearch = async function(type, containerId, stockName, query) {
     state.searchQuery = query;
     const container = document.getElementById(containerId);
+    if (!container) return;
     container.innerHTML = '<div class="text-center text-gray-500 py-10">... 비급을 찾는 중 ...</div>';
     
     const posts = await fetchPosts(type, stockName || null, false);
     container.innerHTML = '';
 
-    if (posts.length === 0) {
+    if (!posts || posts.length === 0) {
         container.innerHTML = '<div class="text-center text-gray-500 py-10">검색된 비급이 없습니다.</div>';
         return;
     }
@@ -3331,6 +3951,18 @@ window.openPostDetail = async function(post) {
     await loadRelatedPosts(post);
     await loadComments(post.id);
     setupCommentAutoResize();
+    const cmt = document.getElementById('comment-input');
+    if (cmt) {
+        if (!state.user) {
+            cmt.setAttribute('readonly','true');
+            cmt.placeholder = '입문 후 전서를 남길 수 있소. 눌러 입문.';
+            cmt.onclick = () => openModal('authModal');
+        } else {
+            cmt.removeAttribute('readonly');
+            cmt.placeholder = '전서(댓글)를 남기시오...';
+            cmt.onclick = null;
+        }
+    }
     if (delBtn) {
         delBtn.onclick = () => {
             const cdt = document.getElementById('confirm-delete-title');
@@ -3817,6 +4449,10 @@ window.openPostEditModal = function(post) {
     
     if (post.type === 'stock') document.getElementById('stock-input').value = post.stock_id;
     if (post.type === 'public') document.getElementById('mu-gong-select').value = post.mugong_id;
+    if (post.type === 'stock') {
+        const sel = document.getElementById('post-category-select');
+        if (sel) sel.value = post.category || '';
+    }
 
     openModal('newPostModal');
 }
@@ -4046,23 +4682,15 @@ async function addComment() {
         const content = input.value.trim();
         if (!content || !postId) return;
         if (containsBadWords(content)) return showToast('금칙어가 포함되었소.', 'error');
-        if (state.user && state.profile?.is_banned) return showToast('관문 출입 금지 상태이오.', 'error');
-
-        if (!state.user) {
-            const today = new Date().toISOString().split('T')[0];
-            const count = parseInt(localStorage.getItem(`comment_count_${today}`) || '0');
-            if (count >= 10) {
-                showToast('하루에 10개의 익명 전서만 띄울 수 있소.', 'error');
-                return;
-            }
-        }
+        if (state.profile?.is_banned) return showToast('관문 출입 금지 상태이오.', 'error');
+        if (!requireAuth('전서 남기기')) return;
 
         const payload = {
             post_id: postId,
             content: content,
-            user_id: (state.user?.id && state.profile?.id === state.user.id) ? state.user.id : null,
-            guest_nickname: state.user ? null : `무협객(${Math.floor(Math.random()*1000)})`,
-            guest_device_id: state.user ? null : getGuestDeviceId(),
+            user_id: state.user.id,
+            guest_nickname: null,
+            guest_device_id: null,
             parent_id: state.replyToCommentId || null
         };
 
@@ -4079,12 +4707,6 @@ async function addComment() {
     } else {
             input.value = '';
             
-            if (!state.user) {
-                const today = new Date().toISOString().split('T')[0];
-                const currentCount = parseInt(localStorage.getItem(`comment_count_${today}`) || '0');
-                localStorage.setItem(`comment_count_${today}`, currentCount + 1);
-            }
-
             state.replyToCommentId = null;
             input.placeholder = '전서(댓글)를 남기시오...';
             const cancelBtn = document.getElementById('cancel-reply-btn');
@@ -4921,6 +5543,7 @@ window.tryOpenWriteModal = (type) => {
         if (type === 'stock') {
             const stockInput = document.getElementById('stock-input');
             if(stockInput) stockInput.value = state.currentStockName;
+            attachStockAutocomplete();
         }
         
         checkAndLoadTempPost();
@@ -4939,6 +5562,8 @@ window.tryOpenWriteModal = (type) => {
 window.togglePostTypeFields = (type) => {
     document.getElementById('mu-gong-area').classList.toggle('hidden', type !== 'public');
     document.getElementById('stock-area').classList.toggle('hidden', type !== 'stock');
+    const cat = document.getElementById('category-area');
+    if (cat) cat.classList.toggle('hidden', type !== 'stock');
     document.querySelectorAll('input[name="post-type"]').forEach(radio => radio.disabled = state.isEditing);
 };
 

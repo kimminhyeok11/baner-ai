@@ -13,14 +13,15 @@ HTML, CSS, Vanilla JavaScript로 구축된 SPA(Single Page Application)이며, S
 ## 폴더 구조
 ```
 /
-├── css/                # 스타일시트
-│   ├── style.css       # 메인 스타일
-│   └── style_ticker.css # 전광판 애니메이션 스타일
-├── js/                 # 자바스크립트 소스
-│   └── app.js          # 메인 로직 (라우팅, API 호출, UI 렌더링)
-├── sql/                # 데이터베이스 스키마 및 마이그레이션 SQL
+├── css/                # 스타일시트 (style.css, style_ticker.css)
+├── js/                 # 자바스크립트 소스 (app.js)
+├── scripts/            # 빌드 및 유틸리티 스크립트 (build.ps1)
+├── server/             # 서버측 코드 (Supabase Edge Functions, Vercel API)
+├── sql/                # 데이터베이스 스키마 및 마이그레이션 SQL (schema.sql 등)
 ├── index.html          # 메인 진입점
 ├── robots.txt          # 검색 엔진 크롤링 설정
+├── sitemap.xml         # 사이트맵 (생성된 파일)
+├── rss.xml            # RSS 피드 (생성된 파일)
 └── DEVELOPER_GUIDE.md  # 본 문서
 ```
 
