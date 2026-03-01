@@ -533,12 +533,24 @@ async function fetchNewsJson(query) {
     // RSS direct fallback via r.jina.ai (CORS-friendly)
     try {
         const q = query && query.trim() ? query.trim() : '코스피 OR 코스닥 OR 증시';
-        const rss = 'http://news.google.com/rss/search?hl=ko&gl=KR&ceid=KR:ko&q=' + encodeURIComponent(q);
+        const rss = 'https://news.google.com/rss/search?hl=ko&gl=KR&ceid=KR:ko&q=' + encodeURIComponent(q);
         const proxyUrl = 'https://r.jina.ai/' + rss;
         const res = await fetch(proxyUrl, { mode: 'cors' });
         if (!res.ok) return [];
-        const xml = await res.text();
+        const text = await res.text();
         const items = [];
+        // r.jina.ai returns Markdown. We need to parse links and titles from it or use a different strategy.
+        // Actually, r.jina.ai converts page to markdown. For RSS XML, it might just return text content.
+        // Better strategy: Use a dedicated RSS-to-JSON service if possible, or parse the XML if r.jina returns it.
+        // Let's assume r.jina returns the raw content if we ask nicely or use another proxy.
+        // Alternative: api.allorigins.win
+        
+        // Let's try api.allorigins.win for raw XML which is more reliable for parsing
+        const allOriginsUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(rss);
+        const res2 = await fetch(allOriginsUrl);
+        if (!res2.ok) throw new Error('allorigins failed');
+        const xml = await res2.text();
+        
         const re = /<item>([\s\S]*?)<\/item>/g;
         let m;
         while ((m = re.exec(xml)) !== null) {
@@ -546,7 +558,7 @@ async function fetchNewsJson(query) {
             const pick = (tag) => {
                 const mm = item.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`));
                 const v = mm ? mm[1] : '';
-                return v.replace(/<!\\[CDATA\\[(.*?)\\]\\]>/g, '$1').trim();
+                return v.replace(/<!\[CDATA\[(.*?)\]\]>/g, '$1').trim();
             };
             items.push({
                 title: pick('title'),
@@ -5145,13 +5157,38 @@ function init() {
             // notificationModal은 자동닫기 로직이 있으므로 클릭 닫기 제외하거나, 포함해도 됨.
             // 여기서는 모든 모달 배경 클릭 시 닫기
             t.classList.add('hidden');
+            if (t.id === 'postDetailModal') {
+                state.currentPostId = null;
+                const url = new URL(window.location);
+                if (url.hash.startsWith('#post-')) {
+                    history.pushState(null, '', window.location.pathname);
+                }
+            }
         }
     }
     
     window.onkeydown = function(e) {
         if (e.key === 'Escape') {
-            document.querySelectorAll('[id$="Modal"]').forEach(m => m.classList.add('hidden'));
-            document.getElementById('userActionSheet').classList.add('hidden');
+            const modals = document.querySelectorAll('[id$="Modal"]');
+            let closedAny = false;
+            modals.forEach(m => {
+                if (!m.classList.contains('hidden')) {
+                    m.classList.add('hidden');
+                    closedAny = true;
+                    if (m.id === 'postDetailModal') {
+                        state.currentPostId = null;
+                        const url = new URL(window.location);
+                        if (url.hash.startsWith('#post-')) {
+                            history.pushState(null, '', window.location.pathname);
+                        }
+                    }
+                }
+            });
+            const sheet = document.getElementById('userActionSheet');
+            if (sheet && !sheet.classList.contains('hidden')) {
+                sheet.classList.add('hidden');
+                closedAny = true;
+            }
         }
         if ((e.ctrlKey || e.metaKey) && String(e.key).toLowerCase() === 'k') {
             e.preventDefault();
